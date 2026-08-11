@@ -32,3 +32,9 @@ bin/
 
 ### Local ROMs ###
 roms/
+
+### AI Runs ####
+runs/
+
+### Generated Models ###
+model/
