@@ -1,83 +1,139 @@
 # MochaNES
 
-**MochaNES** is a high-performance Java NES emulator and **AI Research Platform**.
-It features a cycle-accurate 6502/PPU core and a state-of-the-art **Intrinsic Curiosity Agent (PPO + ICM)** that learns to play games from raw pixels, motivated solely by the desire to see new things.
+A Nintendo Entertainment System emulator in Java, with a cycle-accurate
+6502 CPU and 2C02 PPU, and an optional CRT simulation that models the
+electron beam rather than overlaying a scanline texture.
 
-> [!IMPORTANT]
-> **New: GPU Acceleration Enabled!**
-> The project now supports NVIDIA GPU Training (CUDA 12.1) via DJL/PyTorch.
-
----
-
-## 📚 Documentation
-*   **[AI System Guide](docs/AI_SYSTEM.md)**: Deep dive into the PPO Agent, Orthogonal Initialization, and Curiosity Rewards.
-*   **[Architecture Guide](docs/Architecture.md)**: Details on the Emulator Core (CPU, PPU, Memory).
-*   **[Tools Guide](docs/Tools_Guide.md)**: Manual for the Debugger and Performance Monitor.
+![Java CI with Maven](https://github.com/ralphwarrand/MochaNES/actions/workflows/maven.yml/badge.svg)
 
 ---
 
-## Features
+## Quick start
 
-### Emulator Core
-- **Performance**: Optimized for >1,000,000 FPS headless execution (Fast PPU mode).
-- **CPU/PPU**: Cycle-accurate 6502 & Scanline-based PPU (Loopy's Logic).
-- **State Management**: O(1) State Cloning & Seeking for efficient AI rollouts.
+Requires **JDK 17+** and **Maven 3.8+**.
 
-### AI Capabilities (The "Ghost Scout")
-- **Visual Learning**: Learns entirely from **Raw Pixels** (Purist Design). No RAM hacks.
-- **PPO + ICM**: Proximal Policy Optimization driven by Intrinsic Curiosity (Prediction Error).
-- **Parallel Training**: Runs 16+ emulators in parallel to collect experience.
-- **Advanced Memory**: Uses Perceptual Hashing (Episodic Memory) to avoid "Novelty Loops".
-- **Hardware Accelerated**: Uses DJL (Deep Java Library) + PyTorch + CUDA for massive throughput.
-
----
-
-## 🚀 Getting Started
-
-### Prerequisites
-- **Java JDK 17+**
-- **Maven 3.8+**
-- **NVIDIA GPU** (Drivers >= 531.14 for CUDA 12.1) [Optional but Recommended]
-- **Windows** (Preferred for GPU support)
-
-### Quick Start: Train the AI
-To start the Reinforcement Learning process on GPU:
-
-```cmd
-train_gpu.bat
+```bash
+git clone https://github.com/ralphwarrand/MochaNES.git
+cd MochaNES
+./run.sh
 ```
 
-*   **What this does**:
-    1.  Compiles the project.
-    2.  Configures `PATH` for DJL/CUDA dependencies.
-    3.  Launches the **Online Trainer** (16 Parallel Environments).
-*   **Visualize**: The Trainer will open a window showing Env 0.
-*   **Config**: Edit `configs/ppo_default.properties` to tune Hyperparameters (Learning Rate, Gamma, Entropy).
+That builds the project and boots `resources/nestest.nes`. To play a game:
 
-### Play Manually
-To play a ROM normally:
-```cmd
-run.bat resources/nestest.nes
+```bash
+./run.sh smb                  # bare name, searched for under roms/
+./run.sh roms/MMC3/kirby.nes  # or an explicit path
+./run.sh --crt trinitron smb  # with the CRT simulation on
+./run.sh --list               # what's available
 ```
 
-### Replay & Analysis
-To watch the AI's best performers or debug a training run:
-```cmd
-replay_last_run.bat
-```
-*   **HUD**: Displays Value Estimate, Action Probabilities, and Novelty signals in real-time.
+ROMs are not included and `roms/` is gitignored. Put your own anywhere
+underneath it; the layout is up to you.
+
+**Controls:** arrow keys, `Z`/`X` for A/B, `Shift`/`Enter` for Select/Start —
+all rebindable. Gamepads work on Linux with no setup. `Alt+Enter` for
+fullscreen, `F1` for the CRT.
 
 ---
 
-## Project Structure
+## What it does
+
+**Emulation**
+- Cycle-accurate 6502 with all official and unofficial opcodes, exact
+  per-instruction timing, and correct interrupt-poll behaviour.
+- The clock is driven by the bus: every CPU cycle is a memory access, and each
+  one advances the PPU three dots and the APU one cycle. Reads of `$2002`
+  mid-instruction therefore see the PPU state of that exact cycle.
+- Per-scanline sprite evaluation into secondary OAM, with the hardware 8-sprite
+  limit and overflow flag.
+- Full APU — two pulses, triangle, noise and DMC — with the hardware's
+  non-linear mixing and its 90Hz/440Hz/14kHz filter chain.
+- Mappers 0, 1, 2, 3, 4 and 7 (NROM, MMC1, UxROM, CNROM, MMC3, AxROM),
+  including the MMC3 scanline IRQ that drives mid-frame splits.
+
+**Front-end**
+- Fullscreen, 1x-6x window scaling, and pixel-perfect / 4:3 / stretch aspect.
+- Rebindable keys and Linux gamepad support, persisted to
+  `~/.config/mochanes/settings.properties`.
+- A debugger with disassembly, memory and CHR-ROM views, reading through a
+  non-intrusive `peek()` so inspection cannot perturb timing.
+
+**CRT simulation** (optional, off by default)
+
+Models a beam spot whose width grows with drive level, phosphor persistence,
+NTSC chroma bandwidth in YIQ, halation, and aperture-grille / shadow / slot
+masks — composited in linear light. Four presets, and live dials for mask
+strength, bloom and focus.
+
+---
+
+## Accuracy
+
+Verified against blargg's test ROMs, which report machine-readable results, so
+this is measured rather than estimated:
+
+| Suite | |
+|---|---|
+| `instr_test-v5` (all opcodes) | **16 / 16** |
+| `instr_misc` | **4 / 4** |
+| `instr_timing` | **2 / 2** |
+| `mmc3_test_2` | **4 / 6** |
+| Overall | **31 / 51** |
+
+Also passing standalone: `ppu_read_buffer`, `oam_read`, `oam_stress`,
+`ppu_open_bus`, `cpu_exec_space`, `cpu_dummy_writes`.
+
+Every game in the test library boots and plays, across four mappers.
+Headless throughput is roughly 8-9x realtime.
+
+The remaining failures are concentrated in `ppu_vbl_nmi` and
+`cpu_interrupts_v2`, which measure sub-instruction timing the PPU does not yet
+resolve. The [Accuracy Report](docs/Accuracy.md) documents exactly what fails,
+what was ruled out by measurement, and why.
+
+---
+
+## Documentation
+
+* **[Architecture Reference](docs/Architecture.md)** — the clock model, CPU,
+  PPU, APU, mappers, and the decisions that are not obvious from the code.
+* **[Accuracy Report](docs/Accuracy.md)** — test results, known failures and
+  their causes, and the bugs the suite caught.
+* **[Tools Guide](docs/Tools_Guide.md)** — running, controls, CRT dials,
+  debugger, hooks and replay.
+
+---
+
+## Building and testing
+
+```bash
+mvn clean verify     # build and run the test suite
+./run.sh --test      # the same, via the launcher
+```
+
+The unit tests run anywhere. The 37 ROM-backed accuracy tests **skip** when
+their ROM is absent, so a fresh clone and CI stay green — which also means a
+green badge does not imply the accuracy suite ran. See the Accuracy Report.
+
+---
+
+## Project layout
 
 ```
 MochaNES/
-├── nes-emulator/       # Core Emulation Logic (CPU, PPU, Mappers)
-├── nes-ai/             # AI Module (PPO, ICM, Trainer, DJL Integration)
-├── docs/               # Technical Documentation
-├── configs/            # Hyperparameters (ppo_default.properties)
-├── resources/          # ROMs and Test Data
-├── train_gpu.bat       # Main Entry Point for Training
-└── README.md           # This file
+├── nes-emulator/     # CPU, PPU, APU, mappers, GUI, CRT filter
+├── docs/             # Architecture, accuracy and tooling references
+├── resources/        # nestest ROM and its reference log
+├── run.sh            # Launcher
+└── roms/             # Your ROMs (gitignored)
 ```
+
+A reinforcement-learning agent that plays through this emulator lives on the
+[`ai`](https://github.com/ralphwarrand/MochaNES/tree/ai) branch, kept separate
+so the emulator has no ML dependencies.
+
+---
+
+## Licence
+
+GPL-3.0. See [LICENSE](LICENSE).
