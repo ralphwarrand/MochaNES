@@ -171,10 +171,13 @@ public class APU {
             // any hitch drained it and produced an audible dropout.
             tempLine.open(format, AUDIO_BUFFER_BYTES);
             tempLine.start();
-            System.out.println("[APU] Audio Line Opened Successfully.");
-        } catch (LineUnavailableException e) {
-            System.err.println("[APU] Failed to open Audio Line:");
-            e.printStackTrace();
+        } catch (LineUnavailableException | IllegalArgumentException e) {
+            // A machine with no sound card - a CI runner, or a headless box -
+            // reports it as IllegalArgumentException from getSourceDataLine
+            // rather than LineUnavailableException. Audio is optional, so carry
+            // on silently instead of taking the emulator down with us.
+            tempLine = null;
+            System.err.println("[APU] No audio output available; running silently (" + e.getMessage() + ")");
         }
         this.line = tempLine;
     }
