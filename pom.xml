@@ -12,6 +12,7 @@
 
     <modules>
         <module>nes-emulator</module>
+        <module>nes-ai</module>
     </modules>
 
     <properties>
