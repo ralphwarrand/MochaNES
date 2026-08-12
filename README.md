@@ -72,13 +72,16 @@ strength, bloom and focus.
 Verified against blargg's test ROMs, which report machine-readable results, so
 this is measured rather than estimated:
 
-| Suite | |
-|---|---|
-| `instr_test-v5` (all opcodes) | **16 / 16** |
-| `instr_misc` | **4 / 4** |
-| `instr_timing` | **2 / 2** |
-| `mmc3_test_2` | **4 / 6** |
-| Overall | **31 / 51** |
+| Suite | Passing | What it covers |
+|---|---|---|
+| `instr_test-v5` | **16 / 16** | Every official and unofficial opcode |
+| `instr_misc` | **4 / 4** | Wrapping, dummy reads |
+| `instr_timing` | **2 / 2** | Exact per-instruction cycle counts |
+| `mmc3_test_2` | **4 / 6** | MMC3 banking and scanline IRQ |
+| `apu_test` | **3 / 8** | Length counters, frame IRQ, DMC |
+| `cpu_interrupts_v2` | **1 / 5** | Interrupt timing |
+| `ppu_vbl_nmi` | **1 / 10** | VBlank flag and NMI timing |
+| **Overall** | **31 / 51** | |
 
 Also passing standalone: `ppu_read_buffer`, `oam_read`, `oam_stress`,
 `ppu_open_bus`, `cpu_exec_space`, `cpu_dummy_writes`.
@@ -101,6 +104,9 @@ what was ruled out by measurement, and why.
   their causes, and the bugs the suite caught.
 * **[Tools Guide](docs/Tools_Guide.md)** — running, controls, CRT dials,
   debugger, hooks and replay.
+* **[References](docs/References.md)** — the hardware documentation this was
+  built from, grouped by subsystem, starting with the
+  [NESdev Wiki](https://www.nesdev.org/wiki/Nesdev_Wiki).
 
 ---
 
@@ -137,3 +143,8 @@ so the emulator has no ML dependencies.
 ## Licence
 
 GPL-3.0. See [LICENSE](LICENSE).
+
+The files under `resources/` are third party and not covered by that licence —
+`nestest.nes` is kevtris's homebrew test ROM and `nestest.log.txt` is its
+Nintendulator reference trace. See [resources/README.md](resources/README.md)
+for their provenance. No commercial game ROMs are included.
