@@ -1,6 +1,5 @@
 package com.mochanes.emulator;
 
-import com.mochanes.emulator.gui.Display;
 import java.io.IOException;
 
 public class NES {
@@ -10,16 +9,42 @@ public class NES {
     private Memory memory;
     private Controller controller;
 
-    public NES(Display display) {
+    /** Uses the platform's default audio output. */
+    public NES(FrameSink display) {
+        this(display, com.mochanes.emulator.gui.JavaSoundSink.openOrSilent());
+    }
+
+    /**
+     * Builds a machine against the given video and audio sinks.
+     *
+     * <p>The default output is chosen in the single-argument constructor rather
+     * than by testing for null here, so that this constructor names no platform
+     * audio API at all. A host that supplies its own sink then never references
+     * {@code javax.sound}, which lets an ahead-of-time compiler drop it - the
+     * difference between a browser build linking and failing.
+     *
+     * @param display where the PPU draws
+     * @param audio   where the APU plays
+     */
+    public NES(FrameSink display, AudioSink audio) {
         // Initialize Components
         controller = new Controller();
-        apu = new APU();
+        apu = new APU(audio);
         ppu = new PPU(display);
     }
 
     public void loadROM(String romPath) throws IOException {
         System.out.println("Loading ROM: " + romPath);
-        memory = new Memory(romPath);
+        loadROM(new Memory(romPath));
+    }
+
+    /** Loads from ROM bytes already in memory, for hosts with no filesystem. */
+    public void loadROM(byte[] romData) throws IOException {
+        loadROM(new Memory(romData));
+    }
+
+    private void loadROM(Memory loaded) throws IOException {
+        memory = loaded;
 
         // Wiring
         ppu.setMemory(memory);
@@ -161,7 +186,7 @@ public class NES {
         return controller;
     }
 
-    public NES copy(Display newDisplay) {
+    public NES copy(FrameSink newDisplay) {
         NES newNES = new NES(newDisplay);
 
         // Deep Copy Components

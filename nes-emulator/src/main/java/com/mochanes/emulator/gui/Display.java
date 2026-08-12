@@ -1,5 +1,6 @@
 package com.mochanes.emulator.gui;
 
+import com.mochanes.emulator.FrameSink;
 import com.mochanes.emulator.Controller;
 
 import javax.swing.*;
@@ -9,7 +10,7 @@ import java.awt.event.KeyEvent;
 import java.awt.image.BufferedImage;
 import java.awt.image.DataBufferInt;
 
-public class Display extends JPanel {
+public class Display extends JPanel implements FrameSink {
     public static final int WIDTH = 256;
     public static final int HEIGHT = 240;
 
@@ -705,6 +706,7 @@ public class Display extends JPanel {
     private final int[] renderBuffer = new int[WIDTH * HEIGHT];
     private final Object frameLock = new Object();
 
+    @Override
     public void setPixel(int x, int y, int color) {
         if (x >= 0 && x < WIDTH && y >= 0 && y < HEIGHT) {
             // Headless has no EDT painting concurrently, so it can write
@@ -719,6 +721,7 @@ public class Display extends JPanel {
     }
 
     /** Called by the PPU at VBlank, once the frame is complete. */
+    @Override
     public void refresh() {
         if (headless) {
             return; // nothing to present

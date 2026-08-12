@@ -100,8 +100,17 @@ public class Memory {
     }
 
     public Memory(String romPath) throws IOException {
-        byte[] romData = Files.readAllBytes(Paths.get(romPath));
+        this(Files.readAllBytes(Paths.get(romPath)));
+    }
 
+    /**
+     * Builds from ROM bytes already in memory.
+     *
+     * <p>The filesystem is not always available - a browser build fetches the
+     * ROM over the network, and tests generate one - so parsing is kept
+     * separate from loading.
+     */
+    public Memory(byte[] romData) throws IOException {
         if (romData.length < 16 || romData[0] != 'N' || romData[1] != 'E' || romData[2] != 'S') {
             throw new IOException("Invalid NES ROM file");
         }

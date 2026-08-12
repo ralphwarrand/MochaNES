@@ -1,9 +1,5 @@
 package com.mochanes.emulator;
 
-import javax.sound.sampled.AudioFormat;
-import javax.sound.sampled.AudioSystem;
-import javax.sound.sampled.LineUnavailableException;
-import javax.sound.sampled.SourceDataLine;
 
 /**
  * NES audio processing unit: two pulse channels, triangle, noise and DMC.
@@ -14,7 +10,7 @@ import javax.sound.sampled.SourceDataLine;
 public class APU {
 
     // Audio Output
-    private final SourceDataLine line;
+    private final AudioSink line;
     /** Output line size in bytes; 16-bit mono, so 4 bytes = 2 samples. */
     private static final int AUDIO_BUFFER_BYTES = 8192; // ~93ms at 44.1kHz
 
@@ -160,26 +156,19 @@ public class APU {
             428, 380, 340, 320, 286, 254, 226, 214, 190, 160, 142, 128, 106, 84, 72, 54
     };
 
+    /** Uses the platform's default audio output, or silence if it has none. */
     public APU() {
-        SourceDataLine tempLine = null;
-        try {
-            AudioFormat format = new AudioFormat(44100, 16, 1, true, false);
-            tempLine = AudioSystem.getSourceDataLine(format);
-            // ~93ms of slack. The emulation thread paces itself by blocking on
-            // line.write(), so the buffer is all that absorbs jitter from GC or
-            // a slow repaint; at the old 4096 bytes (46ms, under three frames)
-            // any hitch drained it and produced an audible dropout.
-            tempLine.open(format, AUDIO_BUFFER_BYTES);
-            tempLine.start();
-        } catch (LineUnavailableException | IllegalArgumentException e) {
-            // A machine with no sound card - a CI runner, or a headless box -
-            // reports it as IllegalArgumentException from getSourceDataLine
-            // rather than LineUnavailableException. Audio is optional, so carry
-            // on silently instead of taking the emulator down with us.
-            tempLine = null;
-            System.err.println("[APU] No audio output available; running silently (" + e.getMessage() + ")");
-        }
-        this.line = tempLine;
+        this(com.mochanes.emulator.gui.JavaSoundSink.openOrSilent());
+    }
+
+    /**
+     * Sends audio to the given sink.
+     *
+     * <p>The APU paces the emulation thread by blocking in the sink's write, so
+     * a non-blocking sink leaves the caller responsible for frame timing.
+     */
+    public APU(AudioSink sink) {
+        this.line = sink;
     }
 
     /**
@@ -190,13 +179,7 @@ public class APU {
      */
     public void close() {
         if (line != null) {
-            try {
-                line.stop();
-                line.flush();
-                line.close();
-            } catch (RuntimeException e) {
-                // Already closed or unavailable; nothing useful to do.
-            }
+            line.close();
         }
     }
 

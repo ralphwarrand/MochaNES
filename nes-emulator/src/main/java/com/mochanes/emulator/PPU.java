@@ -1,6 +1,5 @@
 package com.mochanes.emulator;
 
-import com.mochanes.emulator.gui.Display;
 
 public class PPU {
     // Registers (CPU Visible)
@@ -41,7 +40,7 @@ public class PPU {
     public final byte[] paletteRam = new byte[32];
     public final byte[] oam = new byte[256]; // Object Attribute Memory
 
-    private final Display display;
+    private final FrameSink display;
 
     // Fast Rendering Optimization
     private int[] fastBuffer;
@@ -62,7 +61,7 @@ public class PPU {
             0xCCD278, 0xB4DE78, 0xA8E290, 0x98E2B4, 0xA0D6E4, 0xA0A2A0, 0x000000, 0x000000
     };
 
-    public PPU(Display display) {
+    public PPU(FrameSink display) {
         this.display = display;
     }
 
@@ -813,7 +812,7 @@ public class PPU {
         return pixels;
     }
 
-    public PPU copy(Display newDisplay) {
+    public PPU copy(FrameSink newDisplay) {
         PPU newPPU = new PPU(newDisplay);
 
         // Registers
