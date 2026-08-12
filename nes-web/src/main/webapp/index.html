@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MochaNES</title>
+<style>
+  :root {
+    --bg: #14100e;
+    --panel: #1d1714;
+    --edge: #342a24;
+    --text: #efe6df;
+    --muted: #9d8e84;
+    --accent: #d0906080;
+    --accent-solid: #d09060;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 1.5rem 1rem 3rem;
+    background: var(--bg); color: var(--text);
+    font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    display: flex; flex-direction: column; align-items: center;
+  }
+  h1 { margin: 0; font-size: 1.4rem; letter-spacing: -.01em; }
+  .sub { margin: .2rem 0 1.25rem; color: var(--muted); font-size: .85rem; }
+
+  #stage { background: #000; border-radius: 8px; display: flex; align-items: center; justify-content: center; }
+  #stage:fullscreen { border-radius: 0; width: 100vw; height: 100vh; }
+  #stage:fullscreen #screen { width: auto; height: 100vh; max-width: 100vw; }
+  #screen {
+    width: min(92vw, 768px); aspect-ratio: 4 / 3;
+    background: #000; border: 1px solid var(--edge); border-radius: 6px;
+    image-rendering: pixelated; display: block;
+  }
+
+  .bar {
+    width: min(92vw, 768px); display: flex; flex-wrap: wrap; gap: .5rem;
+    align-items: center; margin-top: .75rem; font-size: .84rem; color: var(--muted);
+  }
+  #fps { margin-left: auto; font-variant-numeric: tabular-nums; }
+  #status { min-width: 12rem; }
+
+  button, label.file, select {
+    background: var(--panel); color: var(--text);
+    border: 1px solid var(--edge); border-radius: 5px;
+    padding: .35rem .7rem; font: inherit; font-size: .84rem; cursor: pointer;
+  }
+  button:hover, label.file:hover { border-color: var(--accent-solid); }
+  #rom { display: none; }
+
+  .panels { width: min(92vw, 768px); margin-top: 1.25rem; display: grid; gap: .75rem; }
+  details {
+    background: var(--panel); border: 1px solid var(--edge); border-radius: 7px; padding: .6rem .9rem;
+  }
+  summary { cursor: pointer; font-weight: 600; font-size: .9rem; }
+  .grid { display: grid; grid-template-columns: 9rem 1fr 3rem; gap: .45rem .8rem; align-items: center; margin-top: .8rem; }
+  .grid label { color: var(--muted); font-size: .84rem; }
+  input[type=range] { width: 100%; accent-color: var(--accent-solid); }
+  .row { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .8rem; align-items: center; }
+  .val { color: var(--muted); font-size: .78rem; font-variant-numeric: tabular-nums; }
+  .note { color: var(--muted); font-size: .78rem; margin-top: .6rem; }
+
+  .keys { display: grid; grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr)); gap: .4rem; margin-top: .8rem; }
+  .keys button { display: flex; justify-content: space-between; gap: .5rem; }
+  .keys span { color: var(--muted); }
+
+  pre {
+    margin: .7rem 0 0; padding: .6rem .7rem; background: #100d0b;
+    border: 1px solid var(--edge); border-radius: 5px;
+    font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
+    overflow-x: auto; white-space: pre; color: #d8ccc2;
+  }
+  #regs { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+  input[type=text] {
+    background: #100d0b; color: var(--text); border: 1px solid var(--edge);
+    border-radius: 5px; padding: .3rem .5rem; font: 12px ui-monospace, Menlo, monospace; width: 7rem;
+  }
+  footer { margin-top: 2rem; color: var(--muted); font-size: .78rem; text-align: center; }
+  a { color: var(--accent-solid); }
+</style>
+</head>
+<body>
+
+<h1>MochaNES</h1>
+<p class="sub">A cycle-accurate NES emulator, compiled from Java to JavaScript.</p>
+
+<div id="stage"><canvas id="screen" width="256" height="240"></canvas></div>
+
+<div class="bar">
+  <label class="file" for="rom">Choose ROM</label>
+  <input type="file" id="rom" accept=".nes">
+  <button id="demo">Load nestest</button>
+  <button data-cmd="pause"><span id="pauseLabel">Pause</span></button>
+  <button data-cmd="reset">Reset</button>
+  <button data-cmd="fullscreen">Fullscreen</button>
+  <span id="status">Loading&hellip;</span>
+  <span id="fps"></span>
+</div>
+
+<div class="panels">
+
+  <details open>
+    <summary>Display</summary>
+    <div class="row">
+      <label for="crt"><input type="checkbox" id="crt" data-cmd="crt"> CRT simulation</label>
+      <select data-cmd="preset">
+        <option value="">Preset&hellip;</option>
+        <option value="trinitron">Trinitron</option>
+        <option value="consumer">Consumer TV</option>
+        <option value="arcade">Arcade</option>
+        <option value="sharp">Sharp</option>
+      </select>
+      <select data-cmd="maskType" id="maskType">
+        <option value="0">Aperture grille</option>
+        <option value="1">Shadow mask</option>
+        <option value="2">Slot mask</option>
+        <option value="3">No mask</option>
+      </select>
+      <select data-cmd="aspect">
+        <option value="43">4:3 (as on a TV)</option>
+        <option value="pixel">Pixel-perfect</option>
+        <option value="stretch">Stretch</option>
+      </select>
+      <select data-cmd="scale">
+        <option value="0">Fit width</option>
+        <option value="1">1&times;</option>
+        <option value="2">2&times;</option>
+        <option value="3">3&times;</option>
+        <option value="4">4&times;</option>
+      </select>
+    </div>
+    <div class="grid">
+      <label for="mask">Mask strength</label>
+      <input type="range" id="mask" data-cmd="mask" min="0" max="1" step="0.05" value="0.55">
+      <span class="val" id="maskVal">0.55</span>
+
+      <label for="bloom">Bloom</label>
+      <input type="range" id="bloom" data-cmd="bloom" min="0" max="1.5" step="0.05" value="0.5">
+      <span class="val" id="bloomVal">0.50</span>
+
+      <label for="focus">Focus</label>
+      <input type="range" id="focus" data-cmd="focus" min="0.1" max="1" step="0.05" value="0.6">
+      <span class="val" id="focusVal">0.60</span>
+
+      <label for="scan">Scanline depth</label>
+      <input type="range" id="scan" data-cmd="scan" min="0" max="1" step="0.05" value="0.8">
+      <span class="val" id="scanVal">0.80</span>
+
+      <label for="curve">Curvature</label>
+      <input type="range" id="curve" data-cmd="curve" min="0" max="1" step="0.05" value="0">
+      <span class="val" id="curveVal">0.00</span>
+
+      <label for="volume">Volume</label>
+      <input type="range" id="volume" data-cmd="volume" min="0" max="1" step="0.05" value="1">
+      <span class="val" id="volumeVal">1.00</span>
+    </div>
+    <p class="note" id="crtNote">
+      The beam widens with brightness, so bright scanlines bloom shut while dim ones stay thin.
+      If fine text is hard to read, raise Focus and lower Bloom first.
+    </p>
+  </details>
+
+  <details>
+    <summary>Controls</summary>
+    <div class="keys">
+      <button data-cmd="bind" data-value="0">A <span id="key0">Z</span></button>
+      <button data-cmd="bind" data-value="1">B <span id="key1">X</span></button>
+      <button data-cmd="bind" data-value="2">Select <span id="key2">ShiftRight</span></button>
+      <button data-cmd="bind" data-value="3">Start <span id="key3">Enter</span></button>
+      <button data-cmd="bind" data-value="4">Up <span id="key4">Up</span></button>
+      <button data-cmd="bind" data-value="5">Down <span id="key5">Down</span></button>
+      <button data-cmd="bind" data-value="6">Left <span id="key6">Left</span></button>
+      <button data-cmd="bind" data-value="7">Right <span id="key7">Right</span></button>
+    </div>
+    <p class="note">
+      Click a button then press a key to rebind it; bindings are saved in this browser.
+      A connected gamepad works without any setup.
+    </p>
+  </details>
+
+  <details>
+    <summary>Save states</summary>
+    <div class="row">
+      <button data-cmd="saveState">Save state</button>
+      <button data-cmd="loadState">Load state</button>
+    </div>
+    <p class="note">
+      Held in memory for this session, by cloning the machine rather than serialising it.
+    </p>
+  </details>
+
+  <details>
+    <summary>Debugger</summary>
+    <div class="row">
+      <button data-cmd="step">Step frame</button>
+      <input type="text" id="addr" placeholder="0000">
+      <button data-cmd="gotoAddr" id="gotoBtn">Go to address</button>
+    </div>
+    <p class="note">CPU registers</p>
+    <pre id="regs">no ROM loaded</pre>
+    <p class="note">Disassembly at PC</p>
+    <pre id="disasm"></pre>
+    <p class="note">Memory</p>
+    <pre id="memory"></pre>
+  </details>
+
+</div>
+
+<footer>
+  ROMs are not provided &mdash; choose or drop your own. Nothing is uploaded;
+  the emulator runs entirely in your browser.<br>
+  <a href="https://github.com/ralphwarrand/MochaNES">Source on GitHub</a>
+</footer>
+
+<script type="text/javascript" src="mochanes.js"></script>
+<script type="text/javascript">
+  // Slider readouts, and routing the address box through the Go button.
+  ['mask','bloom','focus','scan','curve','volume'].forEach(function (id) {
+    var el = document.getElementById(id), out = document.getElementById(id + 'Val');
+    if (!el || !out) return;
+    var show = function () { out.textContent = parseFloat(el.value).toFixed(2); };
+    el.addEventListener('input', show);
+    show();
+  });
+  document.getElementById('gotoBtn').setAttribute('data-cmd', 'gotoAddr');
+  document.getElementById('gotoBtn').addEventListener('click', function () {
+    if (window.NESW && window.NESW.command) {
+      window.NESW.command('gotoAddr', document.getElementById('addr').value || '0');
+    }
+  });
+  main();
+</script>
+</body>
+</html>

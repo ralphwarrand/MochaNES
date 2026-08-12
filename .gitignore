@@ -38,3 +38,5 @@ runs/
 
 ### Generated Models ###
 model/
+# Web build output
+nes-web/target/

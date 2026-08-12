@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="
+            http://maven.apache.org/POM/4.0.0
+            http://maven.apache.org/xsd/maven-4.0.0.xsd">
+
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+      <groupId>com.mochanes</groupId>
+      <artifactId>mochanes-parent</artifactId>
+      <version>1.0-SNAPSHOT</version>
+  </parent>
+
+  <artifactId>mochanes-web</artifactId>
+
+  <!--
+    Compiles the emulation core to JavaScript with TeaVM and packages it with a
+    canvas front-end. Built only under the -Pweb profile, so an ordinary
+    `mvn verify` stays fast and needs nothing beyond a JDK.
+  -->
+
+  <properties>
+    <teavm.version>0.12.0</teavm.version>
+  </properties>
+
+  <dependencies>
+    <dependency>
+      <groupId>com.mochanes</groupId>
+      <artifactId>mochanes-emulator</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.teavm</groupId>
+      <artifactId>teavm-classlib</artifactId>
+      <version>${teavm.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.teavm</groupId>
+      <artifactId>teavm-jso-apis</artifactId>
+      <version>${teavm.version}</version>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.teavm</groupId>
+        <artifactId>teavm-maven-plugin</artifactId>
+        <version>${teavm.version}</version>
+        <executions>
+          <execution>
+            <id>compile-to-javascript</id>
+            <phase>prepare-package</phase>
+            <goals><goal>compile</goal></goals>
+            <configuration>
+              <mainClass>com.mochanes.web.WebMain</mainClass>
+              <targetType>JAVASCRIPT</targetType>
+              <targetDirectory>${project.build.directory}/site</targetDirectory>
+              <targetFileName>mochanes.js</targetFileName>
+              <optimizationLevel>ADVANCED</optimizationLevel>
+              <minifying>true</minifying>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+
+      <!-- Copy the page and the sample ROM in alongside the compiled script. -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-resources-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>copy-site</id>
+            <phase>prepare-package</phase>
+            <goals><goal>copy-resources</goal></goals>
+            <configuration>
+              <outputDirectory>${project.build.directory}/site</outputDirectory>
+              <resources>
+                <resource>
+                  <directory>src/main/webapp</directory>
+                </resource>
+                <resource>
+                  <directory>${project.basedir}/../resources</directory>
+                  <includes><include>nestest.nes</include></includes>
+                </resource>
+              </resources>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>

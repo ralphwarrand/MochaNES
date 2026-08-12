@@ -14,6 +14,21 @@
         <module>nes-emulator</module>
     </modules>
 
+    <profiles>
+        <!--
+          The browser build. Kept behind a profile because it pulls the TeaVM
+          compiler down, which an ordinary build has no use for:
+
+              mvn -Pweb package
+        -->
+        <profile>
+            <id>web</id>
+            <modules>
+                <module>nes-web</module>
+            </modules>
+        </profile>
+    </profiles>
+
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.source>17</maven.compiler.source>
