@@ -4,7 +4,9 @@ How the emulator is put together, and the design decisions that are not obvious
 from reading the classes.
 
 For how correct it is and how that is measured, see the
-[Accuracy Report](Accuracy.md).
+[Accuracy Report](Accuracy.md). For the hardware documentation behind these
+decisions — the [NESdev Wiki](https://www.nesdev.org/wiki/Nesdev_Wiki) above
+all — see [References](References.md).
 
 ---
 

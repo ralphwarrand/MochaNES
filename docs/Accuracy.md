@@ -156,3 +156,6 @@ The technique that worked: log every `$2002` read with its CPU cycle count in
 both emulators, then diff on cycle deltas and returned values. The first
 divergence pins the bug. Both emulators disagreeing with each other is itself
 informative — that is how the power-on phase offset was found.
+
+See [References](References.md) for the full documentation set, including the
+[test ROM catalogue](https://www.nesdev.org/wiki/Emulator_tests).

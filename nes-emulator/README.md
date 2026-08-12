@@ -46,4 +46,6 @@ sub-instruction PPU/interrupt timing (`ppu_vbl_nmi`, `cpu_interrupts_v2`).
 
 ## Documentation
 
-See the [Architecture Guide](../docs/Architecture.md) for a deeper dive.
+* [Architecture Guide](../docs/Architecture.md) — the clock model and each core.
+* [Accuracy Report](../docs/Accuracy.md) — test results and known failures.
+* [References](../docs/References.md) — the NESdev documentation behind it.

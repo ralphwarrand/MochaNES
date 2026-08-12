@@ -163,3 +163,11 @@ Both are observational; neither affects timing.
 Replays a recorded input log against a ROM, which makes a run reproducible.
 Because the emulator is deterministic given the same ROM and inputs, a replay
 that diverges indicates a real behavioural change.
+
+---
+
+## 7. Further reading
+
+* [Architecture Reference](Architecture.md) — how the emulator is put together.
+* [Accuracy Report](Accuracy.md) — what passes, what does not, and why.
+* [References](References.md) — the NESdev hardware documentation.
