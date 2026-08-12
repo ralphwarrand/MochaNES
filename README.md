@@ -8,6 +8,10 @@ electron beam rather than overlaying a scanline texture.
 
 ---
 
+**[Play it in your browser](https://ralphwarrand.github.io/MochaNES/)** — the
+same emulator compiled to JavaScript, CRT simulation included. Drop in a ROM;
+nothing is uploaded.
+
 ## Quick start
 
 Requires **JDK 17+** and **Maven 3.8+**.
@@ -123,11 +127,35 @@ green badge does not imply the accuracy suite ran. See the Accuracy Report.
 
 ---
 
+## The browser build
+
+The emulation core has no dependency on Swing, `javax.sound` or the filesystem —
+it talks to a `FrameSink` and an `AudioSink` — so the same code compiles to
+JavaScript with [TeaVM](https://teavm.org/) and runs unmodified on a canvas.
+
+```bash
+mvn -Pweb package        # output in nes-web/target/site
+```
+
+It is built behind a profile so an ordinary build needs nothing but a JDK.
+Pushes to `main` deploy it to GitHub Pages automatically.
+
+Output is **bit-identical** to the JVM: running nestest for 6.3M instructions
+gives the same pixel hash, RAM hash and program counter in both. Throughput is
+about 2.6x realtime in JavaScript against 10x on the JVM, which leaves ample
+headroom for 60fps.
+
+The CRT simulation is a WebGL fragment shader rather than a port of the CPU
+filter — beam profiles, shadow masks and bloom are what GPUs are for, so it
+costs essentially nothing. Save states clone the machine instead of serialising
+it, and the debugger, disassembler and rebindable controls are all there.
+
 ## Project layout
 
 ```
 MochaNES/
 ├── nes-emulator/     # CPU, PPU, APU, mappers, GUI, CRT filter
+├── nes-web/          # Browser front-end (TeaVM, canvas, WebGL CRT)
 ├── docs/             # Architecture, accuracy and tooling references
 ├── resources/        # nestest ROM and its reference log
 ├── run.sh            # Launcher

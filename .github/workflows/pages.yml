@@ -1,0 +1,62 @@
+name: Deploy web build
+
+# Compiles the emulator to JavaScript with TeaVM and publishes it to GitHub
+# Pages, so main is always playable in a browser.
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# A deploy already in flight is allowed to finish rather than being cancelled
+# half-published.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v5
+
+    - name: Set up JDK 17
+      uses: actions/setup-java@v5
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+        cache: maven
+
+    - name: Compile to JavaScript
+      run: mvn -B -Pweb clean package -DskipTests
+
+    # A broken build can still produce a page, so check the compiler actually
+    # emitted something and that what it emitted parses. Node is preinstalled.
+    - name: Verify the output
+      run: |
+        SITE=nes-web/target/site
+        test -s "$SITE/mochanes.js" || { echo "no script produced"; exit 1; }
+        test -s "$SITE/index.html" || { echo "no page produced"; exit 1; }
+        node --check "$SITE/mochanes.js"
+        echo "Script is $(wc -c < "$SITE/mochanes.js") bytes and parses."
+
+    - name: Upload artifact
+      uses: actions/upload-pages-artifact@v5
+      with:
+        path: nes-web/target/site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+    - name: Deploy to GitHub Pages
+      id: deployment
+      uses: actions/deploy-pages@v5
