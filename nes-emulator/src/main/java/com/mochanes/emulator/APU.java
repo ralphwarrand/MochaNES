@@ -743,8 +743,10 @@ public class APU {
     }
 
     public APU copy(Memory newMemory, CPU newCPU) {
-        APU newAPU = new APU();
-        // Mute ghosts (headless)
+        // A clone is a snapshot, not a second console: it gets no output device
+        // at all. Opening one here used to strand a playback line with the
+        // system mixer for every discarded clone.
+        APU newAPU = new APU(AudioSink.SILENT);
         newAPU.setMuted(true);
         newAPU.setMemory(newMemory);
         newAPU.setCpu(newCPU);

@@ -186,8 +186,17 @@ public class NES {
         return controller;
     }
 
+    /**
+     * Clones the machine, for save states and rollouts.
+     *
+     * <p>The copy is silent. A clone is a snapshot rather than a second console,
+     * so giving it its own output would either double up on the speakers or, on
+     * the desktop, strand a playback line with the system mixer for the life of
+     * the process. It also keeps the platform audio API out of this path, which
+     * lets an ahead-of-time compiler drop it from a browser build.
+     */
     public NES copy(FrameSink newDisplay) {
-        NES newNES = new NES(newDisplay);
+        NES newNES = new NES(newDisplay, AudioSink.SILENT);
 
         // Deep Copy Components
         // 1. Memory (holds heavy data)

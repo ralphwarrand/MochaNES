@@ -28,6 +28,12 @@ public class Memory {
     // Mapper State
     private int mapperID;
 
+    /** iNES mapper number parsed from the header. */
+    public int getMapperID() {
+        return mapperID;
+    }
+
+
     // MMC1 State
     private int currShift = 0;
     private int shiftCount = 0;
