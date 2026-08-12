@@ -11,6 +11,16 @@ import org.teavm.jso.JSObject;
  * JavaScript rather than a typed DOM binding, so the hot paths compile to
  * direct property access, and state lives on a single {@code window.NESW}
  * object rather than leaking into the global namespace.
+ *
+ * <p><b>Naming rule: every identifier declared inside one of these scripts is
+ * prefixed {@code q}.</b> The ahead-of-time compiler rewrites the scripts and
+ * renames their parameters to short names - {@code a}, {@code b}, {@code c} -
+ * so any local, function or callback parameter with a short lowercase name can
+ * silently shadow a parameter. That produced two real bugs: a {@code var c}
+ * shadowed a scale argument so display scaling never applied, and a
+ * {@code function(b)} shadowed the ROM handler so fetched ROMs failed to load
+ * while picked ones worked. Neither is a compile error, and both survive
+ * minification, so the prefix is the only reliable defence.
  */
 final class Platform {
 
@@ -111,14 +121,14 @@ final class Platform {
      */
     @JSBody(params = { "handler" }, script = ""
             + "window.NESW.keyHandler = handler;"
-            + "document.addEventListener('keydown', function(e) {"
+            + "document.addEventListener('keydown', function(qEv) {"
             + "  if (window.NESW.capturing) return;"
-            + "  if (e.repeat) { e.preventDefault(); return; }"
-            + "  if (handler(e.code, true)) e.preventDefault();"
+            + "  if (qEv.repeat) { qEv.preventDefault(); return; }"
+            + "  if (handler(qEv.code, true)) qEv.preventDefault();"
             + "});"
-            + "document.addEventListener('keyup', function(e) {"
+            + "document.addEventListener('keyup', function(qEv) {"
             + "  if (window.NESW.capturing) return;"
-            + "  if (handler(e.code, false)) e.preventDefault();"
+            + "  if (handler(qEv.code, false)) qEv.preventDefault();"
             + "});")
     static native void initInput(KeyCallback handler);
 
@@ -158,34 +168,38 @@ final class Platform {
 
     /** Wires up ROM loading from the picker, drag-and-drop and the sample button. */
     @JSBody(params = { "handler" }, script = ""
-            + "var N = window.NESW;"
-            + "function toB64(buf) {"
-            + "  var b = new Uint8Array(buf), s = '';"
-            + "  for (var i = 0; i < b.length; i++) s += String.fromCharCode(b[i]);"
-            + "  return btoa(s);"
+            + "var qN = window.NESW;"
+            + "function qToB64(qData) {"
+            + "  var qBytes = new Uint8Array(qData), qStr = '';"
+            + "  for (var qI = 0; qI < qBytes.length; qI++) qStr += String.fromCharCode(qBytes[qI]);"
+            + "  return btoa(qStr);"
             + "}"
-            + "function read(file) {"
-            + "  var fr = new FileReader();"
-            + "  fr.onload = function() { handler(file.name, toB64(fr.result)); };"
-            + "  fr.readAsArrayBuffer(file);"
+            + "function qRead(qFile) {"
+            + "  var qReader = new FileReader();"
+            + "  qReader.onload = function() { handler(qFile.name, qToB64(qReader.result)); };"
+            + "  qReader.readAsArrayBuffer(qFile);"
             + "}"
-            + "N.loadRom = function(name, b64) { handler(name, b64); };"
-            + "N.loadUrl = function(url, name) {"
-            + "  fetch(url).then(function(r) { return r.arrayBuffer(); })"
-            + "    .then(function(b) { handler(name, toB64(b)); })"
-            + "    .catch(function() { if (N.status) N.status('Could not load ' + name); });"
+            + "qN.loadRom = function(qName, qB64) { handler(qName, qB64); };"
+            + "qN.loadUrl = function(qUrl, qName) {"
+            + "  fetch(qUrl).then(function(qResp) {"
+            + "    if (!qResp.ok) throw new Error('HTTP ' + qResp.status);"
+            + "    return qResp.arrayBuffer();"
+            + "  }).then(function(qBuf) { handler(qName, qToB64(qBuf)); })"
+            + "   .catch(function(qErr) {"
+            + "     if (qN.status) qN.status('Could not load ' + qName + ': ' + qErr.message);"
+            + "   });"
             + "};"
-            + "var picker = document.getElementById('rom');"
-            + "if (picker) picker.addEventListener('change', function(e) {"
-            + "  if (e.target.files[0]) read(e.target.files[0]);"
+            + "var qPicker = document.getElementById('rom');"
+            + "if (qPicker) qPicker.addEventListener('change', function(qEv) {"
+            + "  if (qEv.target.files[0]) qRead(qEv.target.files[0]);"
             + "});"
-            + "document.addEventListener('dragover', function(e) { e.preventDefault(); });"
-            + "document.addEventListener('drop', function(e) {"
-            + "  e.preventDefault();"
-            + "  if (e.dataTransfer.files[0]) read(e.dataTransfer.files[0]);"
+            + "document.addEventListener('dragover', function(qEv) { qEv.preventDefault(); });"
+            + "document.addEventListener('drop', function(qEv) {"
+            + "  qEv.preventDefault();"
+            + "  if (qEv.dataTransfer.files[0]) qRead(qEv.dataTransfer.files[0]);"
             + "});"
-            + "var demo = document.getElementById('demo');"
-            + "if (demo) demo.addEventListener('click', function() { N.loadUrl('nestest.nes', 'nestest.nes'); });")
+            + "var qDemo = document.getElementById('demo');"
+            + "if (qDemo) qDemo.addEventListener('click', function() { qN.loadUrl('nestest.nes', 'nestest.nes'); });")
     static native void initRomLoading(RomCallback handler);
 
     /**
@@ -201,20 +215,20 @@ final class Platform {
             // ahead-of-time compiler re-parses this script and drops the
             // parentheses around an IIFE, leaving an anonymous function
             // statement, which is a syntax error.
-            + "function wire(el) {"
-            + "  var cmd = el.getAttribute('data-cmd');"
-            + "  if (el.tagName === 'INPUT' && (el.type === 'range' || el.type === 'checkbox')) {"
-            + "    el.addEventListener('input', function() {"
-            + "      handler(cmd, el.type === 'checkbox' ? (el.checked ? '1' : '0') : el.value);"
+            + "function qWire(qEl) {"
+            + "  var qCmd = qEl.getAttribute('data-cmd');"
+            + "  if (qEl.tagName === 'INPUT' && (qEl.type === 'range' || qEl.type === 'checkbox')) {"
+            + "    qEl.addEventListener('input', function() {"
+            + "      handler(qCmd, qEl.type === 'checkbox' ? (qEl.checked ? '1' : '0') : qEl.value);"
             + "    });"
-            + "  } else if (el.tagName === 'SELECT') {"
-            + "    el.addEventListener('change', function() { handler(cmd, el.value); });"
+            + "  } else if (qEl.tagName === 'SELECT') {"
+            + "    qEl.addEventListener('change', function() { handler(qCmd, qEl.value); });"
             + "  } else {"
-            + "    el.addEventListener('click', function() { handler(cmd, el.getAttribute('data-value') || ''); });"
+            + "    qEl.addEventListener('click', function() { handler(qCmd, qEl.getAttribute('data-value') || ''); });"
             + "  }"
             + "}"
-            + "var nodes = document.querySelectorAll('[data-cmd]');"
-            + "for (var i = 0; i < nodes.length; i++) wire(nodes[i]);")
+            + "var qNodes = document.querySelectorAll('[data-cmd]');"
+            + "for (var qI = 0; qI < qNodes.length; qI++) qWire(qNodes[qI]);")
     static native void initCommands(CommandCallback handler);
 
     /**
@@ -224,17 +238,17 @@ final class Platform {
      * not also delivered to the emulator.
      */
     @JSBody(params = { "label" }, script = ""
-            + "var N = window.NESW;"
-            + "N.capturing = true;"
-            + "if (N.status) N.status('Press a key for ' + label + ', or Escape to cancel');"
-            + "var once = function(e) {"
-            + "  e.preventDefault();"
-            + "  document.removeEventListener('keydown', once, true);"
-            + "  N.capturing = false;"
-            + "  if (e.code !== 'Escape' && N.command) N.command('bound', e.code);"
-            + "  else if (N.status) N.status('Cancelled');"
+            + "var qN = window.NESW;"
+            + "qN.capturing = true;"
+            + "if (qN.status) qN.status('Press a key for ' + label + ', or Escape to cancel');"
+            + "var qOnce = function(qEv) {"
+            + "  qEv.preventDefault();"
+            + "  document.removeEventListener('keydown', qOnce, true);"
+            + "  qN.capturing = false;"
+            + "  if (qEv.code !== 'Escape' && qN.command) qN.command('bound', qEv.code);"
+            + "  else if (qN.status) qN.status('Cancelled');"
             + "};"
-            + "document.addEventListener('keydown', once, true);")
+            + "document.addEventListener('keydown', qOnce, true);")
     static native void captureKey(String label);
 
     /** Toggles fullscreen on the element wrapping the screen. */
@@ -246,33 +260,45 @@ final class Platform {
 
     /** Applies an aspect and scale choice to the canvas. */
     @JSBody(params = { "aspect", "scale" }, script = ""
-            + "var c = document.getElementById('screen');"
-            + "if (!c) return;"
+            + "var qCanvas = document.getElementById('screen');"
+            + "if (!qCanvas) return;"
             + "if (scale > 0) {"
-            + "  var w = 256 * scale;"
-            + "  c.style.width = w + 'px';"
-            + "  c.style.height = (aspect === 'pixel' ? 240 * scale : Math.round(w * 3 / 4)) + 'px';"
+            + "  var qW = 256 * scale;"
+            + "  qCanvas.style.aspectRatio = 'auto';"
+            + "  qCanvas.style.width = qW + 'px';"
+            + "  qCanvas.style.height = (aspect === 'pixel' ? 240 * scale : Math.round(qW * 3 / 4)) + 'px';"
             + "} else {"
-            + "  c.style.width = 'min(92vw, 768px)';"
-            + "  c.style.height = 'auto';"
-            + "  c.style.aspectRatio = aspect === 'pixel' ? '256 / 240' : (aspect === 'stretch' ? 'auto' : '4 / 3');"
+            + "  qCanvas.style.width = 'min(92vw, 768px)';"
+            + "  qCanvas.style.height = 'auto';"
+            + "  qCanvas.style.aspectRatio = aspect === 'pixel' ? '256 / 240' : (aspect === 'stretch' ? 'auto' : '4 / 3');"
             + "}")
     static native void setDisplayMode(String aspect, int scale);
 
+    /**
+     * Whether the debugger panel is open.
+     *
+     * <p>Refreshing the readouts means disassembling and formatting a few
+     * hundred bytes, which is wasted work while the panel is collapsed.
+     */
+    @JSBody(params = {}, script = ""
+            + "var qEl = document.getElementById('dbg');"
+            + "return !!(qEl && qEl.open);")
+    static native boolean isDebugOpen();
+
     /** Replaces the status line under the screen. */
     @JSBody(params = { "text" }, script = ""
-            + "var N = window.NESW;"
-            + "N.status = N.status || function(t) {"
-            + "  var el = document.getElementById('status');"
-            + "  if (el) el.textContent = t;"
+            + "var qN = window.NESW;"
+            + "qN.status = qN.status || function(qText) {"
+            + "  var qEl = document.getElementById('status');"
+            + "  if (qEl) qEl.textContent = qText;"
             + "};"
-            + "N.status(text);")
+            + "qN.status(text);")
     static native void setStatus(String text);
 
     /** Writes text into any element by id, used for the readouts. */
     @JSBody(params = { "id", "text" }, script = ""
-            + "var el = document.getElementById(id);"
-            + "if (el) el.textContent = text;")
+            + "var qEl = document.getElementById(id);"
+            + "if (qEl) qEl.textContent = text;")
     static native void setText(String id, String text);
 
     /** Reads and writes small settings that should survive a reload. */
@@ -281,21 +307,21 @@ final class Platform {
     static native void store(String key, String value);
 
     @JSBody(params = { "key" }, script = ""
-            + "try { var v = localStorage.getItem('mochanes.' + key); return v === null ? '' : v; }"
-            + "catch (e) { return ''; }")
+            + "try { var qV = localStorage.getItem('mochanes.' + key); return qV === null ? '' : qV; }"
+            + "catch (qErr) { return ''; }")
     static native String load(String key);
 
     /** Reflects a value back into a control, so loaded settings show correctly. */
     @JSBody(params = { "id", "value" }, script = ""
-            + "var el = document.getElementById(id);"
-            + "if (!el) return;"
-            + "if (el.type === 'checkbox') el.checked = value === '1';"
-            + "else el.value = value;")
+            + "var qEl = document.getElementById(id);"
+            + "if (!qEl) return;"
+            + "if (qEl.type === 'checkbox') qEl.checked = value === '1';"
+            + "else qEl.value = value;")
     static native void setControl(String id, String value);
 
     /** Exposes a frame-stepper, used by the debugger and the test harness. */
     @JSBody(params = { "callback" }, script = ""
-            + "window.NESW.stepFrames = function(n) { for (var i = 0; i < n; i++) callback(); };")
+            + "window.NESW.stepFrames = function(qCount) { for (var qI = 0; qI < qCount; qI++) callback(); };")
     static native void exposeStepper(FrameCallback callback);
 
     /**
@@ -306,10 +332,10 @@ final class Platform {
      * page at another host.
      */
     @JSBody(params = {}, script = ""
-            + "var q = new URLSearchParams(location.search).get('rom');"
-            + "if (!q) return false;"
-            + "if (q.indexOf(':') >= 0 || q.indexOf('//') === 0) return false;"
-            + "window.NESW.loadUrl(q, q);"
+            + "var qRom = new URLSearchParams(location.search).get('rom');"
+            + "if (!qRom) return false;"
+            + "if (qRom.indexOf(':') >= 0 || qRom.indexOf('//') === 0) return false;"
+            + "window.NESW.loadUrl(qRom, qRom);"
             + "return true;")
     static native boolean loadRomFromQuery();
 }

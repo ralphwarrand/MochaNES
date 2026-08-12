@@ -45,6 +45,13 @@ jobs:
         node --check "$SITE/mochanes.js"
         echo "Script is $(wc -c < "$SITE/mochanes.js") bytes and parses."
 
+    # Runs the compiled script against a minimal DOM. Compiling successfully is
+    # not evidence of working: parameter renaming can silently shadow a local
+    # and break a feature with no compile error, which is how display scaling
+    # and URL-loaded ROMs shipped broken in 0.1.0.
+    - name: Smoke-test the compiled build
+      run: node nes-web/src/test/js/smoke.js nes-web/target/site
+
     - name: Upload artifact
       uses: actions/upload-pages-artifact@v5
       with:

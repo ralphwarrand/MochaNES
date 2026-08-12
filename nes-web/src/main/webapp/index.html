@@ -68,8 +68,10 @@
     margin: .7rem 0 0; padding: .6rem .7rem; background: #100d0b;
     border: 1px solid var(--edge); border-radius: 5px;
     font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
-    overflow-x: auto; white-space: pre; color: #d8ccc2;
+    overflow: auto; white-space: pre; color: #d8ccc2;
   }
+  #disasm { max-height: 13rem; }
+  #memory { max-height: 15rem; }
   #regs { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
   input[type=text] {
     background: #100d0b; color: var(--text); border: 1px solid var(--edge);
@@ -82,7 +84,7 @@
 <body>
 
 <h1>MochaNES</h1>
-<p class="sub">A cycle-accurate NES emulator, compiled from Java to JavaScript.</p>
+<p class="sub">A Nintendo Entertainment System emulator, written in Java and compiled to JavaScript.</p>
 
 <div id="stage"><canvas id="screen" width="256" height="240"></canvas></div>
 
@@ -189,18 +191,22 @@
     </p>
   </details>
 
-  <details>
+  <details id="dbg">
     <summary>Debugger</summary>
     <div class="row">
       <button data-cmd="step">Step frame</button>
       <input type="text" id="addr" placeholder="0000">
-      <button data-cmd="gotoAddr" id="gotoBtn">Go to address</button>
+      <button id="gotoBtn">Go to address</button>
+      <button data-cmd="memPrev">&uarr; page</button>
+      <button data-cmd="memNext">&darr; page</button>
+      <button data-cmd="memPc">Follow PC</button>
+      <span class="val" id="memRange"></span>
     </div>
     <p class="note">CPU registers</p>
     <pre id="regs">no ROM loaded</pre>
     <p class="note">Disassembly at PC</p>
     <pre id="disasm"></pre>
-    <p class="note">Memory</p>
+    <p class="note">Memory &mdash; scrollable, or page with the buttons above</p>
     <pre id="memory"></pre>
   </details>
 
@@ -222,7 +228,6 @@
     el.addEventListener('input', show);
     show();
   });
-  document.getElementById('gotoBtn').setAttribute('data-cmd', 'gotoAddr');
   document.getElementById('gotoBtn').addEventListener('click', function () {
     if (window.NESW && window.NESW.command) {
       window.NESW.command('gotoAddr', document.getElementById('addr').value || '0');

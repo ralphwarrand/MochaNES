@@ -56,6 +56,15 @@ public final class WebMain {
     private static long fpsWindowStart;
     private static int debugAddress = 0x0000;
 
+    /** Rows in the memory dump. Enough to be worth scrolling through. */
+    private static final int MEM_ROWS = 48;
+
+    /** Instructions shown in the disassembly. */
+    private static final int DISASM_LINES = 24;
+
+    /** When true, the memory view follows the program counter. */
+    private static boolean memFollowsPc;
+
     /* CRT settings, mirrored by the page controls. */
     private static boolean crtOn;
     private static float mask = 0.55f;
@@ -216,7 +225,10 @@ public final class WebMain {
             case "step" -> { if (nes != null) { paused = true; stepOneFrame(); Renderer.present(); updateDebug(); } }
             case "bind" -> startBinding(value);
             case "bound" -> finishBinding(value);
-            case "gotoAddr" -> { debugAddress = parseHex(value); updateDebug(); }
+            case "gotoAddr" -> { debugAddress = parseHex(value); memFollowsPc = false; updateDebug(); }
+            case "memPrev" -> { debugAddress = (debugAddress - MEM_ROWS * 16) & 0xFFFF; memFollowsPc = false; updateDebug(); }
+            case "memNext" -> { debugAddress = (debugAddress + MEM_ROWS * 16) & 0xFFFF; memFollowsPc = false; updateDebug(); }
+            case "memPc" -> { memFollowsPc = !memFollowsPc; updateDebug(); }
             default -> { }
         }
     }
@@ -319,6 +331,11 @@ public final class WebMain {
 
             Renderer.present();
             countFrame();
+            // Once a second is too slow to follow a program counter, so the
+            // readouts refresh per frame - but only while anyone is looking.
+            if (Platform.isDebugOpen()) {
+                updateDebug();
+            }
         }
         Platform.requestFrame(WebMain::tick);
     }
@@ -346,7 +363,6 @@ public final class WebMain {
             Platform.setText("fps", framesThisSecond + " fps");
             framesThisSecond = 0;
             fpsWindowStart = now;
-            updateDebug();
         }
     }
 
@@ -368,22 +384,36 @@ public final class WebMain {
 
         StringBuilder code = new StringBuilder();
         int addr = cpu.getPC();
-        for (int i = 0; i < 12 && disassembler != null; i++) {
-            code.append(disassembler.disassemble(addr)).append('\n');
+        for (int i = 0; i < DISASM_LINES && disassembler != null; i++) {
+            code.append(i == 0 ? "> " : "  ").append(disassembler.disassemble(addr)).append('\n');
             addr = (addr + Math.max(1, disassembler.getInstructionLength(addr))) & 0xFFFF;
         }
         Platform.setText("disasm", code.toString());
 
+        if (memFollowsPc) {
+            // Snap to the start of the row holding PC, so the view does not
+            // jitter sideways as the program counter moves within a line.
+            debugAddress = cpu.getPC() & 0xFFF0;
+        }
+
         StringBuilder dump = new StringBuilder();
-        for (int row = 0; row < 12; row++) {
+        for (int row = 0; row < MEM_ROWS; row++) {
             int base = (debugAddress + row * 16) & 0xFFFF;
             dump.append(hex(base, 4)).append("  ");
             for (int i = 0; i < 16; i++) {
                 dump.append(hex(nes.getMemory().peek((base + i) & 0xFFFF) & 0xFF, 2)).append(' ');
             }
+            dump.append(' ');
+            for (int i = 0; i < 16; i++) {
+                int v = nes.getMemory().peek((base + i) & 0xFFFF) & 0xFF;
+                dump.append(v >= 0x20 && v < 0x7F ? (char) v : '.');
+            }
             dump.append('\n');
         }
         Platform.setText("memory", dump.toString());
+        Platform.setText("memRange", hex(debugAddress, 4) + " - "
+                + hex((debugAddress + MEM_ROWS * 16 - 1) & 0xFFFF, 4)
+                + (memFollowsPc ? "  (following PC)" : ""));
     }
 
     private static String flags(int p) {

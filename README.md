@@ -1,8 +1,16 @@
 # MochaNES
 
-A Nintendo Entertainment System emulator in Java, with a cycle-accurate
-6502 CPU and 2C02 PPU, and an optional CRT simulation that models the
-electron beam rather than overlaying a scanline texture.
+A Nintendo Entertainment System emulator written in Java.
+
+The 6502 and the 2C02 are driven by a shared bus clock, so the PPU and APU
+advance *during* an instruction rather than being caught up afterwards. Every
+opcode and every instruction's cycle count is verified against blargg's test
+ROMs. There is also an optional CRT simulation that models the electron beam
+rather than overlaying a scanline texture.
+
+Timing below the level of a single CPU cycle is not modelled yet, which is
+where the remaining test failures live - the [Accuracy Report](docs/Accuracy.md)
+sets out exactly what passes and what does not.
 
 ![Java CI with Maven](https://github.com/ralphwarrand/MochaNES/actions/workflows/maven.yml/badge.svg)
 
@@ -43,8 +51,8 @@ fullscreen, `F1` for the CRT.
 ## What it does
 
 **Emulation**
-- Cycle-accurate 6502 with all official and unofficial opcodes, exact
-  per-instruction timing, and correct interrupt-poll behaviour.
+- A 6502 with all official and unofficial opcodes, exact per-instruction
+  cycle counts, and correct interrupt-poll behaviour.
 - The clock is driven by the bus: every CPU cycle is a memory access, and each
   one advances the PPU three dots and the APU one cycle. Reads of `$2002`
   mid-instruction therefore see the PPU state of that exact cycle.
