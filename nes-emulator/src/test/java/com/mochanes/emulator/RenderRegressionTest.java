@@ -6,6 +6,7 @@ import static org.junit.Assert.assertTrue;
 import java.util.HashSet;
 import java.util.Set;
 
+import org.junit.Ignore;
 import org.junit.Test;
 
 /**
@@ -276,6 +277,69 @@ public class RenderRegressionTest {
 
         assertEquals("sprite and OAM DMA render changed",
                 -5509204500973931937L, withSprites.hash());
+    }
+
+    /**
+     * Scrolling by one pixel must move the picture by exactly one pixel.
+     *
+     * <p>This needs no reference emulator, which is what makes it useful. The
+     * test ROM fills a nametable and scrolls one pixel per frame, and with
+     * horizontal mirroring the background repeats every 256 pixels, so the
+     * frame at scroll N+1 must equal the frame at scroll N shifted left by one.
+     * Anything that breaks at a tile boundary - fine-X selecting the wrong bit
+     * of the shift registers, the attribute latch reloading a dot early or late,
+     * or the next line's first tile fetched wrongly during dots 321-336 - shows
+     * up as a mismatched column, and edge columns are where those land.
+     *
+     * <p>The failure message reports which columns disagree, since the column
+     * number says which of those mechanisms is at fault.
+     */
+    @Ignore("Known defect: fails on columns 2-7. See docs/Accuracy.md; remove this "
+            + "annotation once the left-edge pipeline bug is fixed.")
+    @Test
+    public void scrollingMovesTheImageByExactlyOnePixel() throws Exception {
+        Capture capture = new Capture();
+        NES nes = new NES(capture, AudioSink.SILENT);
+        nes.loadROM(scrollingBackgroundRom(false));
+        nes.reset();
+
+        int guard = 12_000_000;
+        while (capture.frames < FRAMES && guard-- > 0) {
+            nes.stepInstruction();
+        }
+        int[] before = capture.pixels.clone();
+
+        int target = capture.frames + 1;
+        while (capture.frames < target && guard-- > 0) {
+            nes.stepInstruction();
+        }
+        int[] after = capture.pixels.clone();
+
+        // Count mismatching columns, ignoring rows the status bar or a split
+        // would disturb - this ROM has neither, so every row must agree.
+        int[] badPerColumn = new int[256];
+        int worst = 0;
+        for (int y = 0; y < 240; y++) {
+            for (int x = 0; x < 255; x++) {
+                if ((after[y * 256 + x] & 0xFFFFFF) != (before[y * 256 + x + 1] & 0xFFFFFF)) {
+                    badPerColumn[x]++;
+                    worst = Math.max(worst, badPerColumn[x]);
+                }
+            }
+        }
+
+        StringBuilder bad = new StringBuilder();
+        int columns = 0;
+        for (int x = 0; x < 256; x++) {
+            if (badPerColumn[x] > 0) {
+                columns++;
+                if (bad.length() < 200) {
+                    bad.append(' ').append(x).append('(').append(badPerColumn[x]).append(')');
+                }
+            }
+        }
+        assertEquals("scrolling one pixel did not shift the picture by exactly one pixel; "
+                        + "columns disagreeing (rows affected):" + bad, 0, columns);
     }
 
     @Test

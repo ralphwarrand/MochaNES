@@ -112,7 +112,31 @@ offset changed nothing, which points at the same root cause.
 
 `7-dmc_basics` and `8-dmc_rates` need finer DMC timing than the current model.
 
-### 3.4 Not auto-verifiable
+### 3.4 Left-edge corruption while scrolling (open)
+
+Visible in Kirby's Adventure as wrong tiles and palettes in the leftmost few
+pixels while the screen scrolls.
+
+`RenderRegressionTest.scrollingMovesTheImageByExactlyOnePixel` reproduces it
+without needing a reference emulator. Scrolling one pixel must move the picture
+by exactly one pixel, and with horizontal mirroring the test ROM's background
+repeats every 256 pixels, so the invariant is exact. It currently fails on
+**columns 2 to 7**, four to eight rows each. The test is marked `@Ignore` so the
+build stays green; remove that once this is fixed.
+
+Columns 2-7 puts it in the background pipeline rather than in the timing work
+above. The three candidates, in order of likelihood:
+
+* **fine-X (`x`)** selecting the wrong bit of the shift registers
+* **the attribute latch** reloading a dot early or late relative to the pattern
+  shifters, which gives the right tile with the wrong palette
+* **the next line's first tile**, fetched during dots 321-336, landing wrongly
+
+That only a few rows per column disagree, rather than all 240, suggests the
+fault is revealed by particular tile content rather than happening every line -
+worth confirming before assuming which mechanism it is.
+
+### 3.5 Not auto-verifiable
 
 The 2005-era suites (`blargg_ppu_tests_2005`, `sprite_hit_tests`,
 `sprite_overflow_tests`) predate the `$6000` protocol and only report on screen,
