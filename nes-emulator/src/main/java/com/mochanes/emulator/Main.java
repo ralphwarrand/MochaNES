@@ -62,6 +62,8 @@ public class Main {
             currentDebugger = null;
         }
 
+        display.setRomName(new java.io.File(romPath).getName());
+
         NES nes = new NES(display);
         try {
             nes.loadROM(romPath);

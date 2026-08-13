@@ -30,6 +30,18 @@ public final class WebMain {
     /** Never run more than this many NES frames for one animation frame. */
     private static final int MAX_CATCHUP_FRAMES = 3;
 
+    /**
+     * One NES frame in milliseconds. The console runs at 60.0988Hz, not 60, and
+     * no display runs at exactly either.
+     */
+    private static final double FRAME_MS = 1000.0 / 60.0988;
+
+    /** Ignore gaps longer than this: the tab was hidden, so do not try to catch up. */
+    private static final double MAX_GAP_MS = 250.0;
+
+    private static double lastTick;
+    private static double accumulator;
+
     /** Button order used by {@link Controller}: A, B, Select, Start, U, D, L, R. */
     private static final String[] BUTTON_NAMES =
             { "A", "B", "Select", "Start", "Up", "Down", "Left", "Right" };
@@ -149,6 +161,8 @@ public final class WebMain {
             savedState = null;
             romLoaded = true;
             paused = false;
+            lastTick = 0;
+            accumulator = 0;
             Platform.setStatus(name + " - mapper " + machine.getMemory().getMapperID());
         } catch (Exception e) {
             romLoaded = false;
@@ -340,23 +354,65 @@ public final class WebMain {
 
     // ------------------------------------------------------------- main loop
 
+    /**
+     * Runs the machine in real time, independent of the display's refresh rate.
+     *
+     * <p>The obvious loop - one NES frame per animation frame - is wrong on any
+     * display that is not 60Hz. At 144Hz it runs the console at nearly two and a
+     * half times speed, and the only thing pushing back is the audio queue
+     * filling up, which produces exactly the uneven, choppy motion that pacing
+     * bug is known for. So time is accumulated instead, and frames are run to
+     * consume it.
+     *
+     * <p>The audio queue is still consulted, but only as a slow correction: the
+     * sound card's clock and the system clock drift apart, and over minutes that
+     * drift is what empties or overflows the buffer.
+     */
     private static void tick() {
         if (romLoaded && nes != null && !paused) {
-            pollGamepad();
-            int budget = MAX_CATCHUP_FRAMES;
-            do {
-                stepOneFrame();
-                budget--;
-                // Keep going only while the audio queue is short, meaning the
-                // emulator is behind the sound card rather than ahead of it.
-            } while (budget > 0 && audioStarted && Platform.queuedSamples() < TARGET_QUEUE);
+            double now = Platform.now();
+            double elapsed = lastTick == 0 ? FRAME_MS : now - lastTick;
+            lastTick = now;
 
-            Renderer.present();
-            countFrame();
-            // Once a second is too slow to follow a program counter, so the
-            // readouts refresh per frame - but only while anyone is looking.
-            if (Platform.isDebugOpen()) {
-                updateDebug();
+            if (elapsed > MAX_GAP_MS) {
+                // Hidden tab, or a long stall. Resume rather than sprint.
+                elapsed = FRAME_MS;
+                accumulator = 0;
+            }
+            accumulator += elapsed;
+
+            if (audioStarted) {
+                // Nudge, do not jump: a hard correction is audible.
+                int queued = Platform.queuedSamples();
+                if (queued > TARGET_QUEUE * 2) {
+                    accumulator -= FRAME_MS * 0.05;      // ahead of the sound card
+                } else if (queued < TARGET_QUEUE / 3) {
+                    accumulator += FRAME_MS * 0.05;      // behind it
+                }
+            }
+
+            pollGamepad();
+
+            int ran = 0;
+            while (accumulator >= FRAME_MS && ran < MAX_CATCHUP_FRAMES) {
+                stepOneFrame();
+                accumulator -= FRAME_MS;
+                ran++;
+            }
+            if (accumulator > FRAME_MS * MAX_CATCHUP_FRAMES) {
+                // Too far behind to catch up. Drop the debt instead of running
+                // fast for the next second trying to repay it.
+                accumulator = 0;
+            }
+
+            // Presenting only when something changed saves the whole shader pass
+            // on displays that refresh faster than the console.
+            if (ran > 0) {
+                Renderer.present();
+                countFrame();
+                if (Platform.isDebugOpen()) {
+                    updateDebug();
+                }
             }
         }
         Platform.requestFrame(WebMain::tick);

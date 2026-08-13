@@ -18,7 +18,7 @@ public class PerformanceMonitor {
         Metrics.setEnabled(true);
 
         SwingUtilities.invokeLater(() -> {
-            frame = new JFrame("Performance Metrics");
+            frame = new JFrame("MochaNES Performance");
             frame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
             frame.setSize(600, 400);
 

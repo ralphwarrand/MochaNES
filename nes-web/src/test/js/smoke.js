@@ -79,6 +79,14 @@ const touchNodes = [0, 1, 2, 3, 4, 5, 6, 7].map((i) =>
 
 let pendingFrame = null;
 global.requestAnimationFrame = (cb) => { pendingFrame = cb; };
+// `performance`, like `navigator`, is read-only in recent Node, so a plain
+// assignment is ignored and the pacing checks would silently measure real time.
+let fakeClock = 0;
+Object.defineProperty(global, 'performance', {
+  value: { now: () => fakeClock },
+  configurable: true,
+  writable: true,
+});
 global.window = global;
 global.location = { search: '' };
 global.document = {
@@ -191,6 +199,29 @@ global.document.fullscreenElement = null;
 N.applyDisplay();
 check('leaving fullscreen restores the windowed size', /min\(/.test(elements.screen.style.width),
       elements.screen.style.width);
+
+// Pacing: the loop must follow real time, not the animation-frame rate, or the
+// console runs at display speed - nearly 2.5x on a 144Hz screen.
+function runFor(ms, refreshHz) {
+  const step = 1000 / refreshHz;
+  const before = presented;
+  for (let t = 0; t < ms; t += step) {
+    fakeClock += step;
+    if (pendingFrame) { const cb = pendingFrame; pendingFrame = null; cb(); }
+  }
+  return presented - before;
+}
+// The debugger's step command pauses the machine, so resume before timing it.
+N.command('pause', '');
+N.command('crt', '0');
+fakeClock = 0;
+if (pendingFrame) { const cb = pendingFrame; pendingFrame = null; cb(); }  // prime the clock
+const at60 = runFor(2000, 60);
+const at144 = runFor(2000, 144);
+// Two seconds of wall time is ~120 NES frames whatever the display does.
+check('60Hz display runs at console speed', at60 >= 100 && at60 <= 140, at60 + ' frames in 2s');
+check('144Hz display does not run fast', at144 >= 100 && at144 <= 140,
+      at144 + ' frames in 2s (a display-rate loop would give ~288)');
 
 // URL loading: regression guard for the shadowed ROM handler.
 elements.status.textContent = '';

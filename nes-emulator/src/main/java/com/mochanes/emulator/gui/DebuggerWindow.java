@@ -32,7 +32,7 @@ public class DebuggerWindow extends JFrame {
         this.runner = runner;
         this.disassembler = new Disassembler(nes);
 
-        setTitle("NES Debugger");
+        setTitle("MochaNES Debugger");
         setSize(900, 700);
         setLayout(new BorderLayout());
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);

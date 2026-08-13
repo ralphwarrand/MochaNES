@@ -109,6 +109,10 @@ final class Platform {
     @JSBody(params = { "v" }, script = "window.NESW.volume = v;")
     static native void setVolume(float v);
 
+    /** A monotonic clock in milliseconds, with sub-millisecond resolution. */
+    @JSBody(params = {}, script = "return performance.now();")
+    static native double now();
+
     /** Schedules the next animation frame, which drives the emulation loop. */
     @JSBody(params = { "callback" }, script = "requestAnimationFrame(callback);")
     static native void requestFrame(FrameCallback callback);

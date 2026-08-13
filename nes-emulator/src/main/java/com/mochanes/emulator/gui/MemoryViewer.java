@@ -17,7 +17,7 @@ public class MemoryViewer {
 
     public void displayMemory() {
         SwingUtilities.invokeLater(() -> {
-            JFrame frame = new JFrame("NES Memory Viewer");
+            JFrame frame = new JFrame("MochaNES Memory Viewer");
             frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
             frame.setSize(600, 600);
 

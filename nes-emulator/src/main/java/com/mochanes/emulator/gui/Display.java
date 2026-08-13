@@ -11,6 +11,20 @@ import java.awt.image.BufferedImage;
 import java.awt.image.DataBufferInt;
 
 public class Display extends JPanel implements FrameSink {
+
+    /** Window title with no ROM loaded. */
+    private static final String BASE_TITLE = "MochaNES";
+
+    /**
+     * Puts the running ROM in the title bar, document first, as most
+     * applications do: "smb.nes - MochaNES".
+     */
+    public void setRomName(String name) {
+        if (frame != null) {
+            frame.setTitle(name == null || name.isEmpty() ? BASE_TITLE : name + " - " + BASE_TITLE);
+        }
+    }
+
     public static final int WIDTH = 256;
     public static final int HEIGHT = 240;
 
@@ -51,7 +65,7 @@ public class Display extends JPanel implements FrameSink {
         this.headless = headless;
         if (!headless) {
             // Create a Window
-            frame = new JFrame("Java NES Emulator");
+            frame = new JFrame(BASE_TITLE);
             frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
             frame.setResizable(false);
             frame.setLayout(new BorderLayout());
