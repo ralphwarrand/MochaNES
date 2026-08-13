@@ -112,29 +112,23 @@ offset changed nothing, which points at the same root cause.
 
 `7-dmc_basics` and `8-dmc_rates` need finer DMC timing than the current model.
 
-### 3.4 Left-edge corruption while scrolling (open)
+### 3.4 Scrolling edges (checked, no fault found)
 
-Visible in Kirby's Adventure as wrong tiles and palettes in the leftmost few
-pixels while the screen scrolls.
+`RenderRegressionTest.scrollingMovesTheImageByExactlyOnePixel` asserts that
+scrolling one pixel moves the picture by exactly one pixel. With horizontal
+mirroring the test ROM's background repeats every 256 pixels, so the invariant
+is exact and needs no reference emulator. It passes on every column.
 
-`RenderRegressionTest.scrollingMovesTheImageByExactlyOnePixel` reproduces it
-without needing a reference emulator. Scrolling one pixel must move the picture
-by exactly one pixel, and with horizontal mirroring the test ROM's background
-repeats every 256 pixels, so the invariant is exact. It currently fails on
-**columns 2 to 7**, four to eight rows each. The test is marked `@Ignore` so the
-build stays green; remove that once this is fixed.
+That covers the usual suspects for edge corruption: fine-X selecting the wrong
+bit of the shift registers, the attribute latch reloading out of step with the
+pattern shifters, and the next line's first tile fetched during dots 321-336.
+None of them is wrong.
 
-Columns 2-7 puts it in the background pipeline rather than in the timing work
-above. The three candidates, in order of likelihood:
-
-* **fine-X (`x`)** selecting the wrong bit of the shift registers
-* **the attribute latch** reloading a dot early or late relative to the pattern
-  shifters, which gives the right tile with the wrong palette
-* **the next line's first tile**, fetched during dots 321-336, landing wrongly
-
-That only a few rows per column disagree, rather than all 240, suggests the
-fault is revealed by particular tile content rather than happening every line -
-worth confirming before assuming which mechanism it is.
+An earlier version of this test failed on columns 2-7 and was written up here as
+a confirmed defect. It was not: the test ROM left sprites enabled with OAM never
+initialised, so stationary sprites sat over a scrolling background. The fault
+was in the test. Left-edge artifacts reported in Kirby's Adventure therefore
+remain unexplained, and the background pipeline is not the cause.
 
 ### 3.5 Not auto-verifiable
 

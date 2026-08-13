@@ -100,8 +100,13 @@ public class RenderRegressionTest {
     // ------------------------------------------------------------- the ROMs
 
     /**
-     * Sets up palettes, pattern data and a nametable, turns rendering on, then
-     * scrolls a pixel per frame.
+     * Sets up palettes, pattern data and a nametable, turns the background on,
+     * then scrolls a pixel per frame.
+     *
+     * <p>Sprites are deliberately off. An earlier version left them enabled with
+     * OAM never initialised, which put stationary sprites over a scrolling
+     * background and made the scroll invariant below fail - a fault in the test,
+     * not the emulator, and one that looked exactly like a real PPU bug.
      *
      * <p>Touches the background pipeline, CHR-RAM writes through {@code $2007},
      * palette memory, the scroll registers and nametable mirroring.
@@ -136,7 +141,7 @@ public class RenderRegressionTest {
         a.ldaImm(0x00).staZp(0x10);                 // scroll counter
 
         a.ldaImm(0x00).staAbs(0x2000);              // no NMI, pattern table 0
-        a.ldaImm(0x1E).staAbs(0x2001);              // background and sprites on
+        a.ldaImm(0x0A).staAbs(0x2001);              // background only, left column shown
 
         // One iteration per frame: wait for VBlank, then set the scroll.
         a.label("loop");
@@ -244,7 +249,7 @@ public class RenderRegressionTest {
         assertTrue("expected many colours, got " + c.colours.size(), c.colours.size() >= 4);
 
         assertEquals("horizontal-mirrored background render changed",
-                8330840429236838123L, c.hash());
+                -646372781751870653L, c.hash());
     }
 
     @Test
@@ -294,8 +299,6 @@ public class RenderRegressionTest {
      * <p>The failure message reports which columns disagree, since the column
      * number says which of those mechanisms is at fault.
      */
-    @Ignore("Known defect: fails on columns 2-7. See docs/Accuracy.md; remove this "
-            + "annotation once the left-edge pipeline bug is fixed.")
     @Test
     public void scrollingMovesTheImageByExactlyOnePixel() throws Exception {
         Capture capture = new Capture();

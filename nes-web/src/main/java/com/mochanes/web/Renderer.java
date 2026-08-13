@@ -61,8 +61,14 @@ final class Renderer {
                softness hides, and it costs one multiply instead. */
             + " vec3 toLinear(vec3 c) { c = max(c, 0.0); return c * c; }"
             + " vec3 toSrgb(vec3 c) { return sqrt(max(c, 0.0)); }"
+            /* Taps reach past the picture at the edges. Vertical bounds were
+               guarded but horizontal ones were not, so CLAMP_TO_EDGE repeated
+               the first and last columns into the filter and bloom, brightening
+               and smearing exactly those columns. Off the picture is blanking,
+               which is black. */
             + " vec3 fetch(float x, float row) {"
             + "   if (row < 0.0 || row > SRC.y - 1.0) return vec3(0.0);"
+            + "   if (x < 0.0 || x > 1.0) return vec3(0.0);"
             + "   return toLinear(texture2D(uTex, vec2(x, (row + 0.5) / SRC.y)).rgb); }"
 
             /* One scanline, filtered horizontally. Luma keeps a sharp centre tap
