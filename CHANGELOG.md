@@ -2,6 +2,14 @@
 
 Notable changes per release. Dates are release dates.
 
+## [0.2.1] - 2026-08-13
+
+### Fixed
+- Stepping a single frame in the browser drew nothing. 0.2.0 moved the build to
+  one bulk upload per frame, and the frame stepper filled the buffer without
+  handing it over, so the debugger's step button and the smoke test saw a blank
+  picture. Normal play was unaffected: the main loop uploads after catching up.
+
 ## [0.2.0] - 2026-08-13
 
 ### Added
