@@ -58,6 +58,10 @@ const elements = {
   memory: element('memory'),
   rom: element('rom'),
   demo: element('demo'),
+  touchpad: element('touchpad', { hidden: true }),
+  stage: element('stage'),
+  memRange: element('memRange'),
+  dbg: element('dbg', { open: false }),
   crtNote: element('crtNote'),
 };
 for (let i = 0; i < 8; i++) elements['key' + i] = element('key' + i);
@@ -67,13 +71,19 @@ const commandNodes = [
   element('n2', { tagName: 'SELECT', attrs: { 'data-cmd': 'scale' } }),
 ];
 
+// On-screen pad buttons, in controller order.
+const touchNodes = [0, 1, 2, 3, 4, 5, 6, 7].map((i) =>
+  Object.assign(element('btn' + i, { attrs: { 'data-btn': String(i) } }), {
+    classList: { add() {}, remove() {} },
+  }));
+
 let pendingFrame = null;
 global.requestAnimationFrame = (cb) => { pendingFrame = cb; };
 global.window = global;
 global.location = { search: '' };
 global.document = {
   getElementById: (id) => elements[id] || null,
-  querySelectorAll: () => commandNodes,
+  querySelectorAll: (sel) => (sel === '[data-btn]' ? touchNodes : commandNodes),
   createElement: () => element('tmp'),
   addEventListener: () => {},
 };
@@ -84,7 +94,16 @@ global.localStorage = {
   getItem(k) { return k in this.data ? this.data[k] : null; },
   setItem(k, v) { this.data[k] = String(v); },
 };
-global.navigator = { getGamepads: () => [] };
+// Recent Node versions ship a read-only `navigator`, so a plain assignment is
+// silently ignored and the touch detection never sees maxTouchPoints.
+Object.defineProperty(global, 'navigator', {
+  value: { getGamepads: () => [], maxTouchPoints: 1 },
+  configurable: true,
+  writable: true,
+});
+global.window.innerWidth = 1920;
+global.window.innerHeight = 1080;
+global.window.addEventListener = () => {};
 
 // A fetch double, so the URL-loading path is covered without a network.
 const romBytes = fs.readFileSync(path.join(SITE, 'nestest.nes'));
@@ -146,6 +165,32 @@ check('memory dump produced', /^[0-9A-F]{4}  /.test(elements.memory.textContent)
 // Settings persistence.
 N.command('crt', '1');
 check('settings persisted', localStorage.getItem('mochanes.crt') === '1');
+
+// Touch controls.
+check('touch buttons were bound', typeof touchNodes[0].listeners.pointerdown === 'function');
+let touchThrew = null;
+try {
+  const fake = { preventDefault() {}, pointerId: 1 };
+  touchNodes[0].listeners.pointerdown(fake);   // press A
+  touchNodes[0].listeners.pointerup(fake);     // release A
+} catch (e) { touchThrew = e; }
+check('touch press and release work', touchThrew === null, String(touchThrew));
+check('on-screen pad revealed on a touch device', elements.touchpad.hidden === false);
+
+// Fullscreen sizing: regression guard for inline styles pinning the canvas to
+// its windowed size, which left fullscreen letterboxed with huge margins.
+N.command('scale', '0');
+global.document.fullscreenElement = elements.stage;
+N.applyDisplay();
+check('fullscreen fills the viewport height',
+      elements.screen.style.height === '100vh' || elements.screen.style.width === '100vw',
+      'w=' + elements.screen.style.width + ' h=' + elements.screen.style.height);
+check('fullscreen is not pinned to the windowed width',
+      !/min\(/.test(elements.screen.style.width), elements.screen.style.width);
+global.document.fullscreenElement = null;
+N.applyDisplay();
+check('leaving fullscreen restores the windowed size', /min\(/.test(elements.screen.style.width),
+      elements.screen.style.width);
 
 // URL loading: regression guard for the shadowed ROM handler.
 elements.status.textContent = '';

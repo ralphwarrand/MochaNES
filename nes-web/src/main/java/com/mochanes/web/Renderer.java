@@ -192,8 +192,16 @@ final class Renderer {
             + "  N.ctx2d.putImageData(N.img, 0, 0);"
             + "  return; }"
             + "var gl = N.gl, cv = N.canvas;"
-            + "var dw = Math.max(1, Math.round(cv.clientWidth * (window.devicePixelRatio || 1)));"
-            + "var dh = Math.max(1, Math.round(cv.clientHeight * (window.devicePixelRatio || 1)));"
+            /* The shader costs roughly two dozen texture fetches per output
+               pixel, so the size of the drawing buffer is the whole performance
+               story. Rendering at the full device pixel ratio on a HiDPI screen
+               quadruples that, for detail an effect this soft cannot show, and
+               fullscreen on a large panel multiplies it again. Cap both. */
+            + "var qDpr = Math.min(window.devicePixelRatio || 1, 1.25);"
+            + "var dw = Math.max(1, Math.round(cv.clientWidth * qDpr));"
+            + "var dh = Math.max(1, Math.round(cv.clientHeight * qDpr));"
+            + "var qCap = 1400;"
+            + "if (dw > qCap) { dh = Math.max(1, Math.round(dh * qCap / dw)); dw = qCap; }"
             + "if (cv.width !== dw || cv.height !== dh) { cv.width = dw; cv.height = dh; }"
             + "gl.viewport(0, 0, cv.width, cv.height);"
             + "gl.uniform2f(N.u.uOutput, cv.width, cv.height);"

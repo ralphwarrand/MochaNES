@@ -65,6 +65,10 @@ public final class WebMain {
     /** When true, the memory view follows the program counter. */
     private static boolean memFollowsPc;
 
+    /** Display choices, mirrored so either can be changed without losing the other. */
+    private static String aspect = "43";
+    private static int scale;
+
     /* CRT settings, mirrored by the page controls. */
     private static boolean crtOn;
     private static float mask = 0.55f;
@@ -117,10 +121,11 @@ public final class WebMain {
         Platform.initRomLoading(WebMain::onRom);
         Platform.initCommands(WebMain::onCommand);
         Platform.exposeStepper(WebMain::stepOneFrame);
+        Platform.initTouch(WebMain::onCommand);
 
         restoreSettings();
         applyCrt();
-        Platform.setDisplayMode("43", 0);
+        applyDisplay();
 
         if (!crtAvailable) {
             Platform.setText("crtNote", "WebGL unavailable - CRT simulation disabled.");
@@ -215,14 +220,16 @@ public final class WebMain {
             case "bright" -> { brightness = num(value); applyCrt(); save("bright", value); }
             case "preset" -> applyPreset(value);
             case "volume" -> { Platform.setVolume(num(value)); save("volume", value); }
-            case "aspect" -> { Platform.setDisplayMode(value, 0); save("aspect", value); }
-            case "scale" -> Platform.setDisplayMode(loadOr("aspect", "43"), (int) num(value));
+            case "aspect" -> { aspect = value; applyDisplay(); save("aspect", value); }
+            case "scale" -> { scale = (int) num(value); applyDisplay(); save("scale", value); }
             case "fullscreen" -> Platform.toggleFullscreen();
             case "pause" -> { paused = !paused; Platform.setText("pauseLabel", paused ? "Resume" : "Pause"); }
             case "reset" -> { if (nes != null) { nes.reset(); Platform.setStatus("Reset"); } }
             case "saveState" -> saveState();
             case "loadState" -> loadState();
             case "step" -> { if (nes != null) { paused = true; stepOneFrame(); Renderer.present(); updateDebug(); } }
+            case "touchDown" -> setButton((int) num(value), true);
+            case "touchUp" -> setButton((int) num(value), false);
             case "bind" -> startBinding(value);
             case "bound" -> finishBinding(value);
             case "gotoAddr" -> { debugAddress = parseHex(value); memFollowsPc = false; updateDebug(); }
@@ -230,6 +237,21 @@ public final class WebMain {
             case "memNext" -> { debugAddress = (debugAddress + MEM_ROWS * 16) & 0xFFFF; memFollowsPc = false; updateDebug(); }
             case "memPc" -> { memFollowsPc = !memFollowsPc; updateDebug(); }
             default -> { }
+        }
+    }
+
+    private static void applyDisplay() {
+        Platform.setDisplayMode(aspect, scale);
+    }
+
+    /** Presses or releases a controller button, used by the on-screen pad. */
+    private static void setButton(int button, boolean down) {
+        if (nes == null || button < 0 || button > 7) {
+            return;
+        }
+        Controller pad = nes.getController();
+        if (pad != null) {
+            pad.setButtonPressed(button, down);
         }
     }
 
@@ -437,6 +459,13 @@ public final class WebMain {
         scan = numOr(loadOr("scan", ""), scan);
         curve = numOr(loadOr("curve", ""), curve);
 
+        aspect = loadOr("aspect", "43");
+        scale = (int) numOr(loadOr("scale", ""), 0f);
+        saturation = numOr(loadOr("sat", ""), saturation);
+        brightness = numOr(loadOr("bright", ""), brightness);
+        float volume = numOr(loadOr("volume", ""), 1f);
+        Platform.setVolume(volume);
+
         String saved = loadOr("keys", "");
         if (!saved.isEmpty()) {
             String[] parts = saved.split(",", -1);
@@ -454,6 +483,10 @@ public final class WebMain {
         Platform.setControl("focus", Float.toString(focus));
         Platform.setControl("scan", Float.toString(scan));
         Platform.setControl("curve", Float.toString(curve));
+        Platform.setControl("maskType", Float.toString(maskType));
+        Platform.setControl("aspect", aspect);
+        Platform.setControl("scale", Integer.toString(scale));
+        Platform.setControl("volume", Float.toString(volume));
     }
 
     private static void save(String key, String value) {

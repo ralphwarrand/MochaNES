@@ -258,21 +258,98 @@ final class Platform {
             + "else if (el.requestFullscreen) el.requestFullscreen();")
     static native void toggleFullscreen();
 
-    /** Applies an aspect and scale choice to the canvas. */
+    /**
+     * Applies an aspect and scale choice to the canvas.
+     *
+     * <p>The sizes are written as inline styles, which beat anything in the
+     * stylesheet. That means the fullscreen rules cannot be left to CSS: a
+     * stylesheet cannot override them, so fullscreen is handled here too, and
+     * re-applied whenever the browser enters or leaves it.
+     */
     @JSBody(params = { "aspect", "scale" }, script = ""
-            + "var qCanvas = document.getElementById('screen');"
-            + "if (!qCanvas) return;"
-            + "if (scale > 0) {"
-            + "  var qW = 256 * scale;"
-            + "  qCanvas.style.aspectRatio = 'auto';"
-            + "  qCanvas.style.width = qW + 'px';"
-            + "  qCanvas.style.height = (aspect === 'pixel' ? 240 * scale : Math.round(qW * 3 / 4)) + 'px';"
-            + "} else {"
-            + "  qCanvas.style.width = 'min(92vw, 768px)';"
-            + "  qCanvas.style.height = 'auto';"
-            + "  qCanvas.style.aspectRatio = aspect === 'pixel' ? '256 / 240' : (aspect === 'stretch' ? 'auto' : '4 / 3');"
-            + "}")
+            + "var qN = window.NESW;"
+            + "qN.aspect = aspect;"
+            + "qN.scale = scale;"
+            + "if (!qN.applyDisplay) {"
+            + "  qN.applyDisplay = function() {"
+            + "    var qC = document.getElementById('screen');"
+            + "    if (!qC) return;"
+            + "    var qA = qN.aspect, qS = qN.scale;"
+            + "    var qRatio = qA === 'pixel' ? (256 / 240) : (4 / 3);"
+            + "    if (document.fullscreenElement) {"
+            // Fill the screen: fit the larger of the two dimensions while
+            // keeping the ratio, unless stretch was asked for.
+            + "      if (qA === 'stretch') {"
+            + "        qC.style.width = '100vw'; qC.style.height = '100vh';"
+            + "        qC.style.aspectRatio = 'auto';"
+            + "      } else {"
+            + "        var qVw = window.innerWidth, qVh = window.innerHeight;"
+            + "        var qFit = (qVw / qVh) > qRatio;"
+            + "        qC.style.width = qFit ? 'auto' : '100vw';"
+            + "        qC.style.height = qFit ? '100vh' : 'auto';"
+            + "        qC.style.aspectRatio = String(qRatio);"
+            + "      }"
+            + "      qC.style.maxWidth = '100vw';"
+            + "      qC.style.maxHeight = '100vh';"
+            + "      return;"
+            + "    }"
+            + "    qC.style.maxWidth = '';"
+            + "    qC.style.maxHeight = '';"
+            + "    if (qS > 0) {"
+            + "      var qW = 256 * qS;"
+            + "      qC.style.aspectRatio = 'auto';"
+            + "      qC.style.width = qW + 'px';"
+            + "      qC.style.height = (qA === 'pixel' ? 240 * qS : Math.round(qW * 3 / 4)) + 'px';"
+            + "    } else {"
+            + "      qC.style.width = 'min(92vw, 768px)';"
+            + "      qC.style.height = 'auto';"
+            + "      qC.style.aspectRatio = qA === 'stretch' ? 'auto' : String(qRatio);"
+            + "    }"
+            + "  };"
+            + "  document.addEventListener('fullscreenchange', qN.applyDisplay);"
+            + "  window.addEventListener('resize', qN.applyDisplay);"
+            + "}"
+            + "qN.applyDisplay();")
     static native void setDisplayMode(String aspect, int scale);
+
+    /**
+     * Wires on-screen controls for touch devices.
+     *
+     * <p>Buttons declare a {@code data-btn} index matching the controller's own
+     * order. Pointer events cover touch, pen and mouse in one path, and
+     * releasing outside the button still lifts it, which a naive touchend
+     * handler gets wrong and leaves a direction stuck on.
+     */
+    @JSBody(params = { "handler" }, script = ""
+            + "var qButtons = document.querySelectorAll('[data-btn]');"
+            + "function qBind(qEl) {"
+            + "  var qIdx = qEl.getAttribute('data-btn');"
+            + "  function qDown(qEv) {"
+            + "    qEv.preventDefault();"
+            + "    if (qEl.setPointerCapture && qEv.pointerId !== undefined) {"
+            + "      try { qEl.setPointerCapture(qEv.pointerId); } catch (qErr) {}"
+            + "    }"
+            + "    qEl.classList.add('held');"
+            + "    handler('touchDown', qIdx);"
+            + "  }"
+            + "  function qUp(qEv) {"
+            + "    qEv.preventDefault();"
+            + "    qEl.classList.remove('held');"
+            + "    handler('touchUp', qIdx);"
+            + "  }"
+            + "  qEl.addEventListener('pointerdown', qDown);"
+            + "  qEl.addEventListener('pointerup', qUp);"
+            + "  qEl.addEventListener('pointercancel', qUp);"
+            + "  qEl.addEventListener('contextmenu', function(qEv) { qEv.preventDefault(); });"
+            + "}"
+            + "for (var qI = 0; qI < qButtons.length; qI++) qBind(qButtons[qI]);"
+            // Show the pad when the device is touch-capable, so a laptop with a
+            // touchscreen gets it too rather than guessing from screen width.
+            + "var qPad = document.getElementById('touchpad');"
+            + "if (qPad && (('ontouchstart' in window) || navigator.maxTouchPoints > 0)) {"
+            + "  qPad.hidden = false;"
+            + "}")
+    static native void initTouch(CommandCallback handler);
 
     /**
      * Whether the debugger panel is open.
