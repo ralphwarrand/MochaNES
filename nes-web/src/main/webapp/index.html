@@ -42,15 +42,31 @@
   #stage:fullscreen #touchpad > * { pointer-events: auto; }
   #stage:fullscreen [data-btn] { opacity: .55; }
 
-  /* Held in landscape, the pad belongs at the outer edges rather than in a
-     row under the picture, so thumbs reach it without covering the screen. */
+  /* Landscape fullscreen. The picture is height-limited, so the free space is
+     the bars down either side: the pad goes there. The centre column of the
+     portrait layout would sit straight over the picture, so Start and Select
+     move under A and B instead. */
   @media (orientation: landscape) {
     #stage:fullscreen #touchpad {
-      inset: 0; align-content: center; align-items: center;
+      inset: 0;
+      grid-template-columns: auto 1fr auto;
+      grid-template-rows: 1fr auto auto;
+      align-items: end;
+      gap: .5rem;
+      padding: 0 max(.4rem, env(safe-area-inset-left)) max(.6rem, env(safe-area-inset-bottom));
     }
-    #stage:fullscreen .dpad { justify-self: start; }
-    #stage:fullscreen .face { justify-self: end; }
-    #stage:fullscreen .middle { align-self: end; padding-bottom: 1rem; }
+    #stage:fullscreen .dpad {
+      grid-column: 1; grid-row: 2 / span 2;
+      justify-self: start; align-self: end;
+      grid-template-columns: repeat(3, 2.9rem);
+      grid-template-rows: repeat(3, 2.9rem);
+    }
+    #stage:fullscreen .face   { grid-column: 3; grid-row: 2; justify-self: end; }
+    #stage:fullscreen .face [data-btn] { width: 3.2rem; height: 3.2rem; }
+    #stage:fullscreen .middle {
+      grid-column: 3; grid-row: 3;
+      flex-direction: row; justify-self: end; gap: .4rem;
+    }
   }
   #screen {
     width: min(92vw, 768px); aspect-ratio: 4 / 3;
