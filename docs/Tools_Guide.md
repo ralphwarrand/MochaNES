@@ -24,9 +24,9 @@ reaches the accuracy ROMs (`./run.sh cpu_timing_test`).
 | `-c`, `--crt [preset]` | Start with the CRT simulation on |
 | `-h`, `--help` | Full help |
 
-Two things that catch people out:
+Two gotchas:
 
-* **Several test ROMs share a basename** — there are three different
+* **Several test ROMs share a basename** - there are three different
   `1-clocking.nes`. Bare-name lookup takes the first match, so pass the full
   path when it matters.
 * **`--crt` optionally takes a preset**, so it checks whether the next word is
@@ -34,7 +34,7 @@ Two things that catch people out:
   be read as the preset; pass its path to disambiguate.
 
 If a game shows a blank screen, check the `Detected Mapper: N` line printed at
-load. Anything outside {0, 1, 2, 3, 4, 7} is unimplemented — see the
+load. Anything outside {0, 1, 2, 3, 4, 7} is unimplemented - see the
 [Architecture Reference](Architecture.md#6-the-mapper-subsystem-memoryjava).
 
 ---
@@ -53,7 +53,7 @@ Defaults, all rebindable via **Input → Configure Buttons**:
 Binding a key already in use releases it from its previous button, so you cannot
 end up with two buttons fighting over one key.
 
-**Gamepads** work on Linux with no extra setup — the emulator reads
+**Gamepads** work on Linux with no extra setup - the emulator reads
 `/dev/input/js*` directly. Face buttons map to A/B, centre buttons to
 Select/Start, and both the left stick and the d-pad hat to directions. Keyboard
 and pad work at the same time. A pad plugged in *after* launch is not detected
@@ -75,7 +75,7 @@ Settings persist to `~/.config/mochanes/settings.properties`.
 | `F12` | Focus sharper (`Shift+F12` softer) |
 
 **Video → Window Size** offers 1x-6x, and **Aspect Ratio** offers pixel-perfect
-(integer multiples only, letterboxed), 4:3 (as on a TV — the NES has non-square
+(integer multiples only, letterboxed), 4:3 (as on a TV - the NES has non-square
 pixels) or stretch.
 
 **Help → Controls** lists all of this in-app.
@@ -87,13 +87,13 @@ pixels) or stretch.
 Off by default; `F1` or `--crt` enables it. It models the parts of a tube that
 produce the look rather than overlaying a scanline texture:
 
-* **Electron beam spot** — a gaussian whose width grows with drive level. The
+* **Electron beam spot** - a gaussian whose width grows with drive level. The
   scanlines are the gaps the beam does not reach, which is why bright lines
   bloom wide enough to close their own gap while dark ones stay thin.
 * **Phosphor persistence**, per channel, so motion trails slightly.
-* **NTSC bandwidth** — filtered in YIQ, so colour smears horizontally while
+* **NTSC bandwidth** - filtered in YIQ, so colour smears horizontally while
   luma edges stay sharp. Real composite behaviour, not a blur.
-* **Halation** — light scattering in the glass, driven by the bright parts only.
+* **Halation** - light scattering in the glass, driven by the bright parts only.
 * **Aperture grille / shadow mask / slot mask**, applied in screen space so the
   fine structure stays crisp instead of aliasing.
 
@@ -103,8 +103,8 @@ boundaries; that is what stops the bloom and scanline falloff looking muddy.
 Four presets (Trinitron, Consumer TV, Arcade, Green Phosphor). It costs roughly
 9ms per frame at 1024x960, parallelised across rows.
 
-**If fine detail is hard to read** — dark text on a bright panel is the worst
-case — reach for `F12` (sharper focus) and `F10` (less bloom) first. Mask
+**If fine detail is hard to read** - dark text on a bright panel is the worst
+case - reach for `F12` (sharper focus) and `F10` (less bloom) first. Mask
 strength does not affect overall brightness: the gain tracks the mask's mean
 transmission, so the dials are independent.
 
@@ -127,7 +127,7 @@ The memory view covers the full 64KB map:
 
 > **Note:** debugger and disassembler reads go through `Memory.peek()`, which
 > does not consume a cycle or disturb bus state. Inspecting memory therefore
-> cannot perturb the emulation — important, since the emulator's clock is driven
+> cannot perturb the emulation - important, since the emulator's clock is driven
 > by bus accesses.
 
 ---
@@ -145,7 +145,7 @@ memory.addHook(new MemoryHook() {
 cpu.addHook((pc, opcode, op1, op2) -> { ... });
 ```
 
-`MemoryHook` is how you trace register access — logging every `$2002` read with
+`MemoryHook` is how you trace register access - logging every `$2002` read with
 its cycle count is what pins down timing divergences against another emulator.
 `ExecutionHook` fires per instruction, which makes it a cheap PC profiler for
 finding a stalled wait-loop.
@@ -168,6 +168,6 @@ that diverges indicates a real behavioural change.
 
 ## 7. Further reading
 
-* [Architecture Reference](Architecture.md) — how the emulator is put together.
-* [Accuracy Report](Accuracy.md) — what passes, what does not, and why.
-* [References](References.md) — the NESdev hardware documentation.
+* [Architecture Reference](Architecture.md) - how the emulator is put together.
+* [Accuracy Report](Accuracy.md) - what passes, what does not, and why.
+* [References](References.md) - the NESdev hardware documentation.

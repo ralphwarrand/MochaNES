@@ -5,8 +5,8 @@ from reading the classes.
 
 For how correct it is and how that is measured, see the
 [Accuracy Report](Accuracy.md). For the hardware documentation behind these
-decisions — the [NESdev Wiki](https://www.nesdev.org/wiki/Nesdev_Wiki) above
-all — see [References](References.md).
+decisions - the [NESdev Wiki](https://www.nesdev.org/wiki/Nesdev_Wiki) above
+all - see [References](References.md).
 
 ---
 
@@ -29,8 +29,7 @@ graph TD
 
 ## 2. The Clock Model
 
-This is the piece worth understanding first, because everything else hangs off
-it.
+Everything else hangs off this.
 
 On real hardware the CPU, PPU and APU run concurrently: the PPU advances three
 dots for every CPU cycle. A naive emulator runs a whole CPU instruction and then
@@ -52,8 +51,8 @@ tickCycle();          // PPU x3, APU x1, sample interrupt lines
 runners and the test harness:
 
 1. Execute one CPU instruction (its bus accesses drive the clock).
-2. Make up any cycles the CPU charged for that performed no bus access —
-   internal operations — so totals stay exact.
+2. Make up any cycles the CPU charged for that performed no bus access -
+   internal operations - so totals stay exact.
 3. Service an interrupt latched during the instruction.
 
 Two consequences worth knowing:
@@ -84,7 +83,7 @@ opcodes.
 
 ### 3.1 Cycle timing
 
-Per-instruction cycle counts are exact — verified by blargg's `instr_timing`,
+Per-instruction cycle counts are exact - verified by blargg's `instr_timing`,
 which sweeps every opcode. Page-crossing and branch-taken penalties are applied,
 and unofficial opcodes carry their real costs.
 
@@ -104,11 +103,11 @@ instruction. `NES` keeps the previous cycle's sample to reproduce this.
 NMI is edge-triggered: the edge is latched as it happens and serviced at the
 next instruction boundary.
 
-**Interrupt-disable latency** — `CLI`, `SEI` and `PLP` change the I flag *after*
+**Interrupt-disable latency** - `CLI`, `SEI` and `PLP` change the I flag *after*
 the interrupt poll, so one pending IRQ still gets through after them. Missing
 this on `SEI` was a real bug; `cpu_interrupts_v2/1-cli_latency` catches it.
 
-**NMI hijacking** — if an NMI arrives during BRK's first few cycles, the CPU
+**NMI hijacking** - if an NMI arrives during BRK's first few cycles, the CPU
 vectors through `$FFFA` while the stack still shows BRK's flags.
 
 ### 3.3 DMA
@@ -129,10 +128,10 @@ scanlines per frame.
 
 The PPU does not track X/Y directly. It uses internal latches:
 
-* **v** — current VRAM address (15 bits)
-* **t** — temporary VRAM address (15 bits)
-* **x** — fine X scroll (3 bits)
-* **w** — write toggle (1 bit)
+* **v** - current VRAM address (15 bits)
+* **t** - temporary VRAM address (15 bits)
+* **x** - fine X scroll (3 bits)
+* **w** - write toggle (1 bit)
 
 Writes to `$2005` and `$2006` update these partially, which is what makes
 mid-frame split-screen effects possible (the status bar in *Super Mario Bros 3*).
@@ -151,27 +150,27 @@ Hardware evaluates sprites **once per scanline** into an 8-entry secondary OAM
 and fetches their pattern bytes during the same period. The emulator does the
 same, at dot 257 for the following line.
 
-This matters for both accuracy and speed. Scanning all 64 sprites per pixel —
-with two VRAM reads each — is the single most expensive thing a naive renderer
+This matters for both accuracy and speed. Scanning all 64 sprites per pixel -
+with two VRAM reads each - is the single most expensive thing a naive renderer
 does, and it also silently ignores the hardware 8-sprite limit, so the overflow
 flag never sets and sprites hardware would drop still get drawn.
 
 ### 4.4 Edge cases that games depend on
 
-* **Left-column clipping** — mask bits 1 and 2 blank the leftmost 8 pixels for
+* **Left-column clipping** - mask bits 1 and 2 blank the leftmost 8 pixels for
   background and sprites independently. Games use this while scrolling to hide
   the partial tile sliding in from the left; without it that column is garbage.
   Kirby's Adventure clips it permanently, which is why a strip of backdrop
   colour there is correct rather than a bug.
-* **Open bus** — the `$2002` low bits come from a decaying latch, per bit. An
+* **Open bus** - the `$2002` low bits come from a decaying latch, per bit. An
   access refreshes only the bits it drives, so reading `$2002` refreshes bits
   7-5 and reading a write-only register refreshes nothing.
-* **`$2007` read buffer** — in the palette range, palette RAM answers the CPU
+* **`$2007` read buffer** - in the palette range, palette RAM answers the CPU
   directly while the bus still carries the nametable byte mirrored underneath.
   That byte, not the palette entry, is what gets buffered.
-* **Odd-frame skip** — with rendering enabled, the pre-render line is one dot
+* **Odd-frame skip** - with rendering enabled, the pre-render line is one dot
   short on odd frames.
-* **VBlank race** — reading `$2002` right as the flag is raised suppresses the
+* **VBlank race** - reading `$2002` right as the flag is raised suppresses the
   flag, the NMI, or both, depending on the exact dot.
 
 ---
@@ -186,7 +185,7 @@ non-linear formula.
 Channel outputs accumulate every CPU cycle and are averaged down to 44.1kHz.
 That average is only a box filter, so the mixed signal then goes through the
 filter chain real hardware has: high-pass at 90Hz, high-pass at 440Hz, low-pass
-at **14kHz**. The low-pass is not cosmetic — without it, harmonics above Nyquist
+at **14kHz**. The low-pass is not cosmetic - without it, harmonics above Nyquist
 fold back as aliasing and the top end sounds gritty.
 
 ### 5.2 Pacing
@@ -195,7 +194,7 @@ fold back as aliasing and the top end sounds gritty.
 emulator to 60Hz. The buffer therefore doubles as the only thing absorbing
 jitter from GC or a slow repaint; it is sized at ~93ms for that reason.
 
-If no audio device exists — a CI runner, a headless box — the emulator runs
+If no audio device exists - a CI runner, a headless box - the emulator runs
 silently rather than failing. Note that it then loses its pacing source and will
 run unthrottled.
 
@@ -208,13 +207,13 @@ run unthrottled.
 | 0 | NROM | *Super Mario Bros, Donkey Kong* | No banking |
 | 1 | MMC1 | *Zelda, Metroid* | Shift-register banking, mirroring control |
 | 2 | UxROM | *Mega Man, Castlevania* | Switchable low bank, fixed high bank |
-| 3 | CNROM | — | CHR banking only |
+| 3 | CNROM | - | CHR banking only |
 | 4 | MMC3 | *Super Mario Bros 3, Kirby* | PRG/CHR banking + scanline IRQ |
-| 7 | AxROM | — | 32KB banks, single-screen mirroring |
+| 7 | AxROM | - | 32KB banks, single-screen mirroring |
 
 Anything outside this set reads open bus for its reset vector and spins on
 `BRK` with a blank screen. The `Detected Mapper: N` line printed at load is the
-quickest way to check — **do not infer the mapper from the `roms/` folder name**,
+quickest way to check - **do not infer the mapper from the `roms/` folder name**,
 which does not match.
 
 ### MMC3 scanline IRQ
@@ -234,6 +233,6 @@ rollouts.
 * `System.arraycopy` for large buffers (RAM, VRAM, CHR), direct field assignment
   for registers.
 * A full clone takes tens of microseconds.
-* **Anything added to a component's state must be added to all four paths** —
-  `copy`, `fastCopyFrom`, `saveState`, `loadState` — or it will silently fail to
+* **Anything added to a component's state must be added to all four paths** -
+  `copy`, `fastCopyFrom`, `saveState`, `loadState` - or it will silently fail to
   survive a clone.

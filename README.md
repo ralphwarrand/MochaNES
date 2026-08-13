@@ -16,7 +16,7 @@ sets out exactly what passes and what does not.
 
 ---
 
-**[Play it in your browser](https://ralphwarrand.github.io/MochaNES/)** — the
+**[Play it in your browser](https://ralphwarrand.github.io/MochaNES/)** - the
 same emulator compiled to JavaScript, CRT simulation included. Drop in a ROM;
 nothing is uploaded.
 
@@ -42,7 +42,7 @@ That builds the project and boots `resources/nestest.nes`. To play a game:
 ROMs are not included and `roms/` is gitignored. Put your own anywhere
 underneath it; the layout is up to you.
 
-**Controls:** arrow keys, `Z`/`X` for A/B, `Shift`/`Enter` for Select/Start —
+**Controls:** arrow keys, `Z`/`X` for A/B, `Shift`/`Enter` for Select/Start -
 all rebindable. Gamepads work on Linux with no setup. `Alt+Enter` for
 fullscreen, `F1` for the CRT.
 
@@ -58,7 +58,7 @@ fullscreen, `F1` for the CRT.
   mid-instruction therefore see the PPU state of that exact cycle.
 - Per-scanline sprite evaluation into secondary OAM, with the hardware 8-sprite
   limit and overflow flag.
-- Full APU — two pulses, triangle, noise and DMC — with the hardware's
+- Full APU - two pulses, triangle, noise and DMC - with the hardware's
   non-linear mixing and its 90Hz/440Hz/14kHz filter chain.
 - Mappers 0, 1, 2, 3, 4 and 7 (NROM, MMC1, UxROM, CNROM, MMC3, AxROM),
   including the MMC3 scanline IRQ that drives mid-frame splits.
@@ -74,7 +74,7 @@ fullscreen, `F1` for the CRT.
 
 Models a beam spot whose width grows with drive level, phosphor persistence,
 NTSC chroma bandwidth in YIQ, halation, and aperture-grille / shadow / slot
-masks — composited in linear light. Four presets, and live dials for mask
+masks - composited in linear light. Four presets, and live dials for mask
 strength, bloom and focus.
 
 ---
@@ -110,13 +110,17 @@ what was ruled out by measurement, and why.
 
 ## Documentation
 
-* **[Architecture Reference](docs/Architecture.md)** — the clock model, CPU,
+* **[Architecture Reference](docs/Architecture.md)** - the clock model, CPU,
   PPU, APU, mappers, and the decisions that are not obvious from the code.
-* **[Accuracy Report](docs/Accuracy.md)** — test results, known failures and
+* **[Accuracy Report](docs/Accuracy.md)** - test results, known failures and
   their causes, and the bugs the suite caught.
-* **[Tools Guide](docs/Tools_Guide.md)** — running, controls, CRT dials,
+* **[Tools Guide](docs/Tools_Guide.md)** - running, controls, CRT dials,
   debugger, hooks and replay.
-* **[References](docs/References.md)** — the hardware documentation this was
+* **[Roadmap](docs/Roadmap.md)** - a critical look at what is weak and what to
+  do about it, in order.
+* **[Contributing](CONTRIBUTING.md)** - how to build, what the tests really
+  cover, and the two traps that are not obvious from the code.
+* **[References](docs/References.md)** - the hardware documentation this was
   built from, grouped by subsystem, starting with the
   [NESdev Wiki](https://www.nesdev.org/wiki/Nesdev_Wiki).
 
@@ -130,15 +134,15 @@ mvn clean verify     # build and run the test suite
 ```
 
 The unit tests run anywhere. The 37 ROM-backed accuracy tests **skip** when
-their ROM is absent, so a fresh clone and CI stay green — which also means a
+their ROM is absent, so a fresh clone and CI stay green - which also means a
 green badge does not imply the accuracy suite ran. See the Accuracy Report.
 
 ---
 
 ## The browser build
 
-The emulation core has no dependency on Swing, `javax.sound` or the filesystem —
-it talks to a `FrameSink` and an `AudioSink` — so the same code compiles to
+The emulation core has no dependency on Swing, `javax.sound` or the filesystem -
+it talks to a `FrameSink` and an `AudioSink` - so the same code compiles to
 JavaScript with [TeaVM](https://teavm.org/) and runs unmodified on a canvas.
 
 ```bash
@@ -154,8 +158,8 @@ about 2.6x realtime in JavaScript against 10x on the JVM, which leaves ample
 headroom for 60fps.
 
 The CRT simulation is a WebGL fragment shader rather than a port of the CPU
-filter — beam profiles, shadow masks and bloom are what GPUs are for, so it
-costs essentially nothing. Save states clone the machine instead of serialising
+filter - beam profiles, shadow masks and bloom are what GPUs are for, so it
+costs almost nothing. Save states clone the machine instead of serialising
 it, and the debugger, disassembler and rebindable controls are all there.
 
 ## Project layout
@@ -180,7 +184,7 @@ so the emulator has no ML dependencies.
 
 GPL-3.0. See [LICENSE](LICENSE).
 
-The files under `resources/` are third party and not covered by that licence —
+The files under `resources/` are third party and not covered by that licence -
 `nestest.nes` is kevtris's homebrew test ROM and `nestest.log.txt` is its
 Nintendulator reference trace. See [resources/README.md](resources/README.md)
 for their provenance. No commercial game ROMs are included.

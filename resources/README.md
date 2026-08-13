@@ -6,7 +6,7 @@ the default launch path depend on them.
 
 ## `nestest.nes`
 
-A 6502 CPU test ROM written by **kevtris**. It is homebrew — it contains no
+A 6502 CPU test ROM written by **kevtris**. It is homebrew - it contains no
 Nintendo code or assets, so it is not a commercial game dump.
 
 It carries no explicit licence. It has been distributed with emulator projects
@@ -22,16 +22,16 @@ Documentation: <https://www.qmtpro.com/~nes/misc/nestest.txt>
 A cycle-by-cycle execution trace of the above ROM, produced by **Nintendulator**
 and conventionally distributed with it. `CPUExecutionTest` diffs the emulator's
 own trace against this line by line, which is the strongest single check on CPU
-correctness in the suite — it catches wrong flags, wrong addressing and wrong
+correctness in the suite - it catches wrong flags, wrong addressing and wrong
 cycle counts in one pass.
 
 Same licensing position as the ROM: no explicit grant, widely redistributed.
 
 ## What depends on them
 
-* `CPUExecutionTest` — diffs against the reference log.
-* `SaveStateTest` — loads the ROM, with a synthetic fallback if it is absent.
-* `run.sh` with no arguments — boots `nestest.nes` as the default.
+* `CPUExecutionTest` - diffs against the reference log.
+* `SaveStateTest` - loads the ROM, with a synthetic fallback if it is absent.
+* `run.sh` with no arguments - boots `nestest.nes` as the default.
 
 A duplicate pair lives under `nes-emulator/src/test/resources/` so the tests can
 load them from the classpath.

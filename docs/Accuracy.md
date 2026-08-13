@@ -14,7 +14,7 @@ standard for NES emulator correctness. Each one exercises a narrow piece of
 hardware behaviour and writes its verdict into PRG-RAM:
 
 * `$6001-$6003` hold `DE B0 61` once output is valid
-* `$6000` holds the status — `0x80` running, `0x81` wants a reset, otherwise the
+* `$6000` holds the status - `0x80` running, `0x81` wants a reset, otherwise the
   result code (`0` = pass)
 * `$6004` onwards is a NUL-terminated message
 
@@ -56,7 +56,7 @@ To run them, place the test ROMs under `roms/test/` matching the paths in
 Standalone, all passing: `ppu_read_buffer`, `oam_read`, `oam_stress`,
 `ppu_open_bus`, `cpu_exec_space` (both), `cpu_dummy_writes/oam`.
 
-**Game compatibility: 8 / 8** of the library boots and plays — across NROM,
+**Game compatibility: 8 / 8** of the library boots and plays - across NROM,
 MMC1, UxROM and MMC3.
 
 **Performance:** roughly 8-9x realtime headless.
@@ -68,7 +68,7 @@ MMC1, UxROM and MMC3.
 These are recorded in `BlarggTestRomTest.KNOWN_FAILING` rather than quietly
 omitted, so the list cannot rot without someone noticing.
 
-### 3.1 Sub-instruction timing — `ppu_vbl_nmi`, `cpu_interrupts_v2`
+### 3.1 Sub-instruction timing - `ppu_vbl_nmi`, `cpu_interrupts_v2`
 
 The dominant remaining gap, and the reason ~14 tests fail.
 
@@ -78,13 +78,13 @@ cycle. These tests measure where the VBlank flag flips *within* a single CPU
 cycle, and that resolution does not exist yet.
 
 Fixing it means stepping the PPU dot-by-dot with the CPU able to observe between
-dots — a restructure, not a patch.
+dots - a restructure, not a patch.
 
 Ruled out by measurement, so nobody repeats the work:
 
 | Hypothesis | Result |
 |---|---|
-| Bus/cycle drift | Audited: 1,206,937 accesses vs 1,206,937 cycles — zero drift |
+| Bus/cycle drift | Audited: 1,206,937 accesses vs 1,206,937 cycles - zero drift |
 | VBlank window wrong | Probed: set at (241,1), cleared at (261,1), exactly 6820 dots |
 | Tick phase (before/after access) | Tested both; before is better, neither passes |
 | Splitting the 3 dots around the access | All four split points tested, no change |
@@ -92,19 +92,19 @@ Ruled out by measurement, so nobody repeats the work:
 | VBlank suppression / odd-frame skip | A/B'd all four combinations, no change |
 | Power-on frame phase | Found a real 2391-cycle offset and corrected it; tests unmoved, because `sync_vbl` resynchronises before every measurement |
 
-Worth knowing: **FCEUX's accurate `newppu` core also fails part of this suite**
+Note: **FCEUX's accurate `newppu` core also fails part of this suite**
 (it misses the row-04 flag-suppression case in `02-vbl_set_time`). These are
 exotic even by emulator standards.
 
-### 3.2 MMC3 — 2 of 6
+### 3.2 MMC3 - 2 of 6
 
-* `4-scanline_timing` needs exact IRQ placement *within* a scanline — same
+* `4-scanline_timing` needs exact IRQ placement *within* a scanline - same
   sub-instruction limitation as above.
 * `6-MMC3_alt` fails **by design, not as a defect.** It and `5-MMC3` test the
   two mutually exclusive MMC3 revisions; passing both is impossible. This
   emulator implements rev B, which `5-MMC3` checks.
 
-### 3.3 APU — 3 of 8
+### 3.3 APU - 3 of 8
 
 `4-jitter`, `5-len_timing` and `6-irq_flag_timing` need frame-sequencer events
 placed to sub-cycle precision. Scanning the sequencer phase and the frame-IRQ
@@ -129,15 +129,15 @@ normal play:
 | Bug | Found by | Symptom |
 |---|---|---|
 | `BRK` charged 14 cycles instead of 7 | `instr_timing` | Invisible until an opcode-sweeping test; most games never hit it |
-| APU accumulators never reset | — | **All audio silent**; every sample was the running average since power-on |
+| APU accumulators never reset | - | **All audio silent**; every sample was the running average since power-on |
 | Stack pops did not wrap in page 1 | `instr_test-v5/11-stack` | `SP=$FF` pop read `$0200` |
 | `SEI` missing interrupt latency | `cpu_interrupts_v2/1-cli_latency` | One IRQ swallowed that hardware allows |
 | `$2007` palette read buffer | `ppu_read_buffer` | Test **hung**; fix also repaired `oam_stress` |
 | ANE/LXA unimplemented | `instr_test-v5/03-immediate` | Fell into the JAM path and hung |
-| Left-column clipping ignored | — | Garbage column while scrolling |
-| Sprites scanned per pixel | — | No 8-sprite limit or overflow flag; ~4x slower |
-| Missing 14kHz low-pass | — | Aliasing heard as gritty high end |
-| DMC fetch re-entered the clock | — | Broke the 3:1 PPU:CPU invariant |
+| Left-column clipping ignored | - | Garbage column while scrolling |
+| Sprites scanned per pixel | - | No 8-sprite limit or overflow flag; ~4x slower |
+| Missing 14kHz low-pass | - | Aliasing heard as gritty high end |
+| DMC fetch re-entered the clock | - | Broke the 3:1 PPU:CPU invariant |
 | No audio device crashed startup | CI | `IllegalArgumentException`, not `LineUnavailableException` |
 
 ---
@@ -147,15 +147,15 @@ normal play:
 When a test failure was ambiguous, behaviour was diffed against other
 emulators rather than argued from first principles.
 
-* **FCEUX** (`--newppu`) — scriptable via Lua, good for `$2002` read traces.
-* **Mesen 2** — the most accurate reference available. Its `--testRunner` mode
+* **FCEUX** (`--newppu`) - scriptable via Lua, good for `$2002` read traces.
+* **Mesen 2** - the most accurate reference available. Its `--testRunner` mode
   crashes on some Linux builds (a static-init `std::regex` locale fault inside
   the bundled libstdc++), so tracing has to go through the GUI Script Window.
 
 The technique that worked: log every `$2002` read with its CPU cycle count in
 both emulators, then diff on cycle deltas and returned values. The first
 divergence pins the bug. Both emulators disagreeing with each other is itself
-informative — that is how the power-on phase offset was found.
+informative - that is how the power-on phase offset was found.
 
 See [References](References.md) for the full documentation set, including the
 [test ROM catalogue](https://www.nesdev.org/wiki/Emulator_tests).
