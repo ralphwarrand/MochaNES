@@ -157,8 +157,9 @@ gives the same pixel hash, RAM hash and program counter in both. Throughput is
 about 2.6x realtime in JavaScript against 10x on the JVM, which leaves ample
 headroom for 60fps.
 
-The CRT simulation is a WebGL fragment shader rather than a port of the CPU
-filter - beam profiles, shadow masks and bloom are what GPUs are for, so it
+Touch devices get an on-screen pad, and display settings persist in the
+browser. The CRT simulation is a WebGL fragment shader rather than a port of the
+CPU filter - beam profiles, shadow masks and bloom are what GPUs are for, so it
 costs almost nothing. Save states clone the machine instead of serialising
 it, and the debugger, disassembler and rebindable controls are all there.
 

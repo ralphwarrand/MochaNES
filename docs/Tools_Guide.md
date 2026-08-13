@@ -187,6 +187,20 @@ the page, so a particular game can be linked directly.
 After a rebuild, reload with `Ctrl-Shift-R`. The compiled script is cached hard,
 and an ordinary reload will quietly show you the previous build.
 
+The browser version carries the same features as the desktop one: CRT presets
+and dials, aspect and scale options, fullscreen, rebindable keys, gamepads, save
+states and a debugger. Settings are kept in the browser and survive a reload.
+
+**Touch devices** get an on-screen pad automatically, below the screen. It is
+revealed when the browser reports touch support, so a laptop with a touchscreen
+gets it too. Sliding off a button releases it rather than leaving a direction
+held.
+
+**Fullscreen** fits whichever dimension runs out first, honouring the aspect
+setting. The CRT renders one buffer pixel per screen pixel so the shadow mask
+stays crisp; on a large display that is the most expensive thing on screen, so
+turn the CRT off if fullscreen struggles.
+
 ---
 
 ## 8. Further reading
