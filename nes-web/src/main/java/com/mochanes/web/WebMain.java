@@ -199,7 +199,7 @@ public final class WebMain {
         Platform.initInput(WebMain::onKey);
         Platform.initRomLoading(WebMain::onRom);
         Platform.initCommands(WebMain::onCommand);
-        Platform.exposeStepper(WebMain::stepOneFrame);
+        Platform.exposeStepper(WebMain::stepFrameAndUpload);
         Platform.initTouch(WebMain::onCommand);
         Platform.initFocusLoss(WebMain::onCommand);
 
@@ -447,7 +447,7 @@ public final class WebMain {
             case "reset" -> { if (nes != null) { nes.reset(); Platform.setStatus("Reset"); } }
             case "saveState" -> saveState();
             case "loadState" -> loadState();
-            case "step" -> { if (nes != null) { paused = true; stepOneFrame(); Renderer.uploadFrame(frame); Renderer.present(); updateDebug(); } }
+            case "step" -> { if (nes != null) { paused = true; stepFrameAndUpload(); Renderer.present(); updateDebug(); } }
             case "touchDown" -> setButton((int) num(value), true);
             case "touchUp" -> setButton((int) num(value), false);
             case "inputLost" -> clearInput();
@@ -696,6 +696,20 @@ public final class WebMain {
             lockedToDisplay = close;
             accumulator = 0;
         }
+    }
+
+    /**
+     * Runs a frame and hands it to the renderer.
+     *
+     * <p>What the debugger's step button and the test harness want: they drive
+     * frames one at a time and then look at the picture, so the frame has to
+     * reach the shared buffer. The main loop keeps calling {@link #stepOneFrame}
+     * directly, since it may run several frames to catch up and only the last
+     * one needs uploading.
+     */
+    private static void stepFrameAndUpload() {
+        stepOneFrame();
+        Renderer.uploadFrame(frame);
     }
 
     private static void stepOneFrame() {
