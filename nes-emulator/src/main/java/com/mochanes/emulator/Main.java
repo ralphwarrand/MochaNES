@@ -77,6 +77,7 @@ public class Main {
 
         System.out.println("Starting Emulation Thread...");
         EmulatorRunner runner = new EmulatorRunner(nes);
+        runner.setTargetFps(displayRefreshRate());
         runner.start();
 
         currentNes = nes;
@@ -133,6 +134,36 @@ public class Main {
             System.err.println("Error loading ROM for replay: " + e.getMessage());
             e.printStackTrace();
         }
+    }
+
+    /**
+     * The screen's refresh rate, or the console's own rate when it cannot be
+     * read or is nowhere near it.
+     *
+     * <p>Producing frames at the display's rate keeps the two in step. Left at
+     * 60.0988Hz against a 60Hz screen the phases drift, and roughly every ten
+     * seconds a frame arrives with no refresh to show it - seen as a hitch
+     * rather than as the emulator running at the wrong speed.
+     */
+    private static double displayRefreshRate() {
+        try {
+            if (java.awt.GraphicsEnvironment.isHeadless()) {
+                return EmulatorRunner.NES_FPS;
+            }
+            int rate = java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment()
+                    .getDefaultScreenDevice().getDisplayMode().getRefreshRate();
+            if (rate == java.awt.DisplayMode.REFRESH_RATE_UNKNOWN || rate <= 0) {
+                return EmulatorRunner.NES_FPS;
+            }
+            // Only follow the display when it is close; a 144Hz screen must not
+            // make the console run at two and a half times speed.
+            if (Math.abs(rate - EmulatorRunner.NES_FPS) / EmulatorRunner.NES_FPS < 0.01) {
+                return rate;
+            }
+        } catch (Throwable ignored) {
+            // Any windowing trouble: fall back to the console's own rate.
+        }
+        return EmulatorRunner.NES_FPS;
     }
 
 }

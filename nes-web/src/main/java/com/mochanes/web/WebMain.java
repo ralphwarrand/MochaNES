@@ -42,6 +42,30 @@ public final class WebMain {
     private static double lastTick;
     private static double accumulator;
 
+    /**
+     * Rolling estimate of the display's refresh interval, in milliseconds.
+     *
+     * <p>Measured rather than assumed: {@code screen.refreshRate} does not
+     * exist on the web, and the value decides whether the loop can lock to the
+     * display or has to keep accumulating.
+     */
+    private static double refreshEstimate;
+    private static int refreshSamples;
+
+    /**
+     * True when one NES frame per animation frame is close enough to real time.
+     *
+     * <p>A 60Hz display refreshes every 16.667ms and the console wants
+     * 16.639ms. Accumulating that 0.027ms difference crosses a whole frame
+     * about every ten seconds, and the loop then runs two frames for one
+     * refresh - one of which is never seen. Locking one to one trades a 0.16%
+     * rate error, which the audio correction already absorbs, for not dropping
+     * a frame periodically. Off a matching display - 144Hz, or a tab being
+     * throttled - the accumulator is still the right answer, so this stays
+     * false and nothing changes.
+     */
+    private static boolean lockedToDisplay;
+
     /** Button order used by {@link Controller}: A, B, Select, Start, U, D, L, R. */
     private static final String[] BUTTON_NAMES =
             { "A", "B", "Select", "Start", "Up", "Down", "Left", "Right" };
@@ -50,6 +74,37 @@ public final class WebMain {
             { "KeyZ", "KeyX", "ShiftRight", "Enter", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight" };
 
     private static final String[] keys = DEFAULT_KEYS.clone();
+
+    /**
+     * Pad bindings in the same token form the desktop build uses: {@code b<n>}
+     * for pad button n, {@code a<n>-} / {@code a<n>+} for an axis pushed past
+     * the deadzone, several alternatives separated by {@code |}, empty for
+     * unbound.
+     *
+     * <p>The defaults are the standard-mapping layout this used to hardcode,
+     * alternatives included: either face button of a pair for A and B, and the
+     * d-pad *and* the left stick for the directions, so a stick works out of
+     * the box without anyone rebinding anything.
+     */
+    private static final String[] DEFAULT_PAD = {
+            "b0|b2", "b1|b3", "b8", "b9",
+            "b12|a1-", "b13|a1+", "b14|a0-", "b15|a0+"
+    };
+
+    private static final String[] padBindings = DEFAULT_PAD.clone();
+
+    /** Button index being rebound from the pad, or -1. */
+    private static int padBindingButton = -1;
+    /** Controls already held when a pad capture started; ignored until released. */
+    private static int padCaptureIgnore;
+
+    // Each input source keeps its own held-button mask and the three are OR'd
+    // together. Merging at the source rather than writing straight through to
+    // the Controller is what lets a pad and the keyboard be used at the same
+    // time without one cancelling the other's releases.
+    private static int keyState;
+    private static int padState;
+    private static int touchState;
 
     private static NES nes;
     private static NES savedState;
@@ -92,14 +147,26 @@ public final class WebMain {
     private static float saturation = 1.0f;
     private static float brightness = 1.05f;
 
-    /** Writes straight into the shared frame buffer; no intermediate array. */
+    /**
+     * The frame the PPU draws into.
+     *
+     * <p>Given to the PPU as its fast buffer, so drawing a pixel is a plain
+     * array store rather than an interface call that ends in a JavaScript one.
+     * {@link Renderer#uploadFrame} then hands the whole thing over once.
+     */
+    private static final int[] frame = new int[WIDTH * HEIGHT];
+
+    /**
+     * Kept for the frame-complete signal, and as the path used if the PPU ever
+     * runs without a fast buffer attached.
+     */
     private static final class Video implements FrameSink {
         boolean complete;
 
         @Override
         public void setPixel(int x, int y, int color) {
             if (x >= 0 && x < WIDTH && y >= 0 && y < HEIGHT) {
-                Renderer.setPixel(y * WIDTH + x, color);
+                frame[y * WIDTH + x] = color;
             }
         }
 
@@ -134,6 +201,7 @@ public final class WebMain {
         Platform.initCommands(WebMain::onCommand);
         Platform.exposeStepper(WebMain::stepOneFrame);
         Platform.initTouch(WebMain::onCommand);
+        Platform.initFocusLoss(WebMain::onCommand);
 
         restoreSettings();
         applyCrt();
@@ -156,6 +224,9 @@ public final class WebMain {
             NES machine = new NES(video, audio);
             machine.loadROM(rom);
             machine.reset();
+            // Draw straight into the shared frame. loadState copies in place and
+            // leaves the buffer attached, so this only has to happen per ROM.
+            machine.getPpu().setFastRendering(frame);
             nes = machine;
             disassembler = new Disassembler(machine);
             savedState = null;
@@ -182,11 +253,9 @@ public final class WebMain {
             return false;
         }
         for (int i = 0; i < keys.length; i++) {
-            if (keys[i].equals(code)) {
-                Controller pad = nes.getController();
-                if (pad != null) {
-                    pad.setButtonPressed(i, down);
-                }
+            if (!keys[i].isEmpty() && keys[i].equals(code)) {
+                keyState = down ? (keyState | (1 << i)) : (keyState & ~(1 << i));
+                applyInput();
                 return true;
             }
         }
@@ -195,23 +264,160 @@ public final class WebMain {
 
     /** Merges gamepad state in, so a pad and the keyboard can be used together. */
     private static void pollGamepad() {
-        int state = Platform.readGamepad();
-        if (state < 0 || nes == null) {
+        int buttons = Platform.readPadButtons();
+        int axes = Platform.readPadAxes();
+        if (buttons < 0) {
+            // No pad connected: clear the mask rather than leave it held.
+            padState = 0;
+            applyInput();
+            return;
+        }
+        if (axes < 0) {
+            axes = 0;
+        }
+
+        if (padBindingButton >= 0) {
+            // Nothing on the pad drives the game while a control is being
+            // chosen, or the press that binds it also plays.
+            padState = 0;
+            applyInput();
+            capturePadControl(buttons, axes);
+            return;
+        }
+
+        int state = 0;
+        for (int i = 0; i < padBindings.length; i++) {
+            if (isPadBindingDown(padBindings[i], buttons, axes)) {
+                state |= 1 << i;
+            }
+        }
+        padState = state;
+        applyInput();
+    }
+
+    /** Whether any control listed in a binding is currently held. */
+    private static boolean isPadBindingDown(String binding, int buttons, int axes) {
+        if (binding == null || binding.isEmpty()) {
+            return false;
+        }
+        for (String token : binding.split("\\|")) {
+            if (isPadControlDown(token, buttons, axes)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Whether the control named by a single token is currently held. */
+    private static boolean isPadControlDown(String token, int buttons, int axes) {
+        if (token == null || token.length() < 2) {
+            return false;
+        }
+        char kind = token.charAt(0);
+        if (kind == 'b') {
+            int index = padIndex(token.substring(1));
+            return index >= 0 && index < 31 && (buttons & (1 << index)) != 0;
+        }
+        if (kind == 'a') {
+            int index = padIndex(token.substring(1, token.length() - 1));
+            if (index < 0 || index >= 16) {
+                return false;
+            }
+            int bit = 2 * index + (token.charAt(token.length() - 1) == '+' ? 1 : 0);
+            return (axes & (1 << bit)) != 0;
+        }
+        return false;
+    }
+
+    /** Parses the numeric part of a binding token, or -1 if it is malformed. */
+    private static int padIndex(String text) {
+        if (text.isEmpty()) {
+            return -1;
+        }
+        int value = 0;
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (c < '0' || c > '9') {
+                return -1;
+            }
+            value = value * 10 + (c - '0');
+        }
+        return value;
+    }
+
+    /**
+     * Takes the first pad control pressed after a rebind starts.
+     *
+     * <p>Buttons already held when the capture began are ignored until they are
+     * released, so clicking "bind" with a trigger held does not bind the
+     * trigger straight away.
+     */
+    private static void capturePadControl(int buttons, int axes) {
+        for (int i = 0; i < 31; i++) {
+            if ((buttons & (1 << i)) != 0 && (padCaptureIgnore & (1 << i)) == 0) {
+                finishPadBinding("b" + i);
+                return;
+            }
+        }
+        for (int i = 0; i < 16; i++) {
+            for (int dir = 0; dir < 2; dir++) {
+                if ((axes & (1 << (2 * i + dir))) != 0) {
+                    finishPadBinding("a" + i + (dir == 1 ? "+" : "-"));
+                    return;
+                }
+            }
+        }
+        // Buttons that have since been let go stop being ignored.
+        padCaptureIgnore &= buttons;
+    }
+
+    private static void finishPadBinding(String token) {
+        // One control drives one button, so take it off any binding that lists
+        // it, leaving that binding's other alternatives in place.
+        for (int i = 0; i < padBindings.length; i++) {
+            StringBuilder kept = new StringBuilder();
+            for (String alt : padBindings[i].split("\\|")) {
+                if (!alt.isEmpty() && !alt.equals(token)) {
+                    kept.append(kept.length() == 0 ? "" : "|").append(alt);
+                }
+            }
+            padBindings[i] = kept.toString();
+        }
+        padBindings[padBindingButton] = token;
+        save("pad", String.join(",", padBindings));
+        refreshBindingLabels();
+        Platform.setStatus(BUTTON_NAMES[padBindingButton] + " bound to pad " + token);
+        padBindingButton = -1;
+        padCaptureIgnore = 0;
+    }
+
+    /**
+     * Drives the Controller from the union of keyboard, gamepad and touch.
+     *
+     * <p>Every button is written every time, presses and releases alike. An
+     * earlier version had the pad only ever assert, never release, to stop an
+     * idle pad cancelling a held key - which left any button pressed on a pad
+     * stuck down for good, since nothing else would clear it.
+     */
+    /** Releases everything currently held, for when the page loses focus. */
+    private static void clearInput() {
+        keyState = 0;
+        padState = 0;
+        touchState = 0;
+        applyInput();
+    }
+
+    private static void applyInput() {
+        if (nes == null) {
             return;
         }
         Controller pad = nes.getController();
         if (pad == null) {
             return;
         }
+        int state = keyState | padState | touchState;
         for (int i = 0; i < 8; i++) {
-            boolean pressed = (state & (1 << i)) != 0;
-            if (pressed || !keys[i].isEmpty()) {
-                // Only assert; releases still come from the key handler, so a
-                // held key is not cancelled by an idle pad.
-                if (pressed) {
-                    pad.setButtonPressed(i, true);
-                }
-            }
+            pad.setButtonPressed(i, (state & (1 << i)) != 0);
         }
     }
 
@@ -241,11 +447,14 @@ public final class WebMain {
             case "reset" -> { if (nes != null) { nes.reset(); Platform.setStatus("Reset"); } }
             case "saveState" -> saveState();
             case "loadState" -> loadState();
-            case "step" -> { if (nes != null) { paused = true; stepOneFrame(); Renderer.present(); updateDebug(); } }
+            case "step" -> { if (nes != null) { paused = true; stepOneFrame(); Renderer.uploadFrame(frame); Renderer.present(); updateDebug(); } }
             case "touchDown" -> setButton((int) num(value), true);
             case "touchUp" -> setButton((int) num(value), false);
+            case "inputLost" -> clearInput();
             case "bind" -> startBinding(value);
             case "bound" -> finishBinding(value);
+            case "bindPad" -> startPadBinding(value);
+            case "resetInput" -> resetBindings();
             case "gotoAddr" -> { debugAddress = parseHex(value); memFollowsPc = false; updateDebug(); }
             case "memPrev" -> { debugAddress = (debugAddress - MEM_ROWS * 16) & 0xFFFF; memFollowsPc = false; updateDebug(); }
             case "memNext" -> { debugAddress = (debugAddress + MEM_ROWS * 16) & 0xFFFF; memFollowsPc = false; updateDebug(); }
@@ -260,12 +469,46 @@ public final class WebMain {
 
     /** Presses or releases a controller button, used by the on-screen pad. */
     private static void setButton(int button, boolean down) {
-        if (nes == null || button < 0 || button > 7) {
+        if (button < 0 || button > 7) {
             return;
         }
-        Controller pad = nes.getController();
-        if (pad != null) {
-            pad.setButtonPressed(button, down);
+        touchState = down ? (touchState | (1 << button)) : (touchState & ~(1 << button));
+        applyInput();
+    }
+
+    /** Begins waiting for a pad control to bind to the given NES button. */
+    private static void startPadBinding(String indexText) {
+        int button = (int) num(indexText);
+        if (button < 0 || button >= padBindings.length) {
+            return;
+        }
+        int held = Platform.readPadButtons();
+        if (held < 0) {
+            Platform.setStatus("No gamepad detected");
+            return;
+        }
+        padBindingButton = button;
+        padCaptureIgnore = held;
+        Platform.setText("pad" + button, "press...");
+        Platform.setStatus("Press a control on the pad for " + BUTTON_NAMES[button]);
+    }
+
+    /** Puts both keyboard and pad back to the built-in layout. */
+    private static void resetBindings() {
+        System.arraycopy(DEFAULT_KEYS, 0, keys, 0, DEFAULT_KEYS.length);
+        System.arraycopy(DEFAULT_PAD, 0, padBindings, 0, DEFAULT_PAD.length);
+        padBindingButton = -1;
+        bindingButton = -1;
+        save("keys", String.join(",", keys));
+        save("pad", String.join(",", padBindings));
+        refreshBindingLabels();
+        Platform.setStatus("Controls reset to defaults");
+    }
+
+    private static void refreshBindingLabels() {
+        for (int i = 0; i < keys.length; i++) {
+            Platform.setText("key" + i, keys[i].isEmpty() ? "-" : pretty(keys[i]));
+            Platform.setText("pad" + i, padBindings[i].isEmpty() ? "-" : padBindings[i]);
         }
     }
 
@@ -378,7 +621,10 @@ public final class WebMain {
                 // Hidden tab, or a long stall. Resume rather than sprint.
                 elapsed = FRAME_MS;
                 accumulator = 0;
+                refreshSamples = 0;
+                lockedToDisplay = false;
             }
+            trackRefreshRate(elapsed);
             accumulator += elapsed;
 
             if (audioStarted) {
@@ -394,10 +640,17 @@ public final class WebMain {
             pollGamepad();
 
             int ran = 0;
-            while (accumulator >= FRAME_MS && ran < MAX_CATCHUP_FRAMES) {
+            if (lockedToDisplay) {
+                // One frame per refresh, in step with the display.
                 stepOneFrame();
-                accumulator -= FRAME_MS;
-                ran++;
+                ran = 1;
+                accumulator = 0;
+            } else {
+                while (accumulator >= FRAME_MS && ran < MAX_CATCHUP_FRAMES) {
+                    stepOneFrame();
+                    accumulator -= FRAME_MS;
+                    ran++;
+                }
             }
             if (accumulator > FRAME_MS * MAX_CATCHUP_FRAMES) {
                 // Too far behind to catch up. Drop the debt instead of running
@@ -408,6 +661,7 @@ public final class WebMain {
             // Presenting only when something changed saves the whole shader pass
             // on displays that refresh faster than the console.
             if (ran > 0) {
+                Renderer.uploadFrame(frame);
                 Renderer.present();
                 countFrame();
                 if (Platform.isDebugOpen()) {
@@ -416,6 +670,32 @@ public final class WebMain {
             }
         }
         Platform.requestFrame(WebMain::tick);
+    }
+
+    /**
+     * Follows the animation-frame interval and decides whether to lock to it.
+     *
+     * <p>The estimate is a slow average so one late frame does not flip the
+     * mode, and locking needs the display to be within 1% of the console's
+     * rate - near enough that a viewer cannot see the difference, but far
+     * enough out that 50Hz, 75Hz and 144Hz stay on the accumulator.
+     */
+    private static void trackRefreshRate(double elapsed) {
+        if (elapsed <= 1.0 || elapsed > 100.0) {
+            return; // nonsense sample: a stall, or the first tick
+        }
+        refreshEstimate = refreshSamples == 0
+                ? elapsed
+                : refreshEstimate + (elapsed - refreshEstimate) * 0.05;
+        if (refreshSamples < 240) {
+            refreshSamples++;
+            return;
+        }
+        boolean close = Math.abs(refreshEstimate - FRAME_MS) / FRAME_MS < 0.01;
+        if (close != lockedToDisplay) {
+            lockedToDisplay = close;
+            accumulator = 0;
+        }
     }
 
     private static void stepOneFrame() {
@@ -529,9 +809,14 @@ public final class WebMain {
                 keys[i] = parts[i];
             }
         }
-        for (int i = 0; i < keys.length; i++) {
-            Platform.setText("key" + i, keys[i].isEmpty() ? "-" : pretty(keys[i]));
+        String savedPad = loadOr("pad", "");
+        if (!savedPad.isEmpty()) {
+            String[] parts = savedPad.split(",", -1);
+            for (int i = 0; i < padBindings.length && i < parts.length; i++) {
+                padBindings[i] = parts[i];
+            }
         }
+        refreshBindingLabels();
 
         Platform.setControl("crt", crtOn ? "1" : "0");
         Platform.setControl("mask", Float.toString(mask));

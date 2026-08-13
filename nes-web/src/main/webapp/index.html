@@ -101,9 +101,11 @@
   .val { color: var(--muted); font-size: .78rem; font-variant-numeric: tabular-nums; }
   .note { color: var(--muted); font-size: .78rem; margin-top: .6rem; }
 
-  .keys { display: grid; grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr)); gap: .4rem; margin-top: .8rem; }
-  .keys button { display: flex; justify-content: space-between; gap: .5rem; }
-  .keys span { color: var(--muted); }
+  .binds { display: grid; grid-template-columns: auto 1fr 1fr; gap: .4rem; align-items: center; margin-top: .8rem; }
+  .binds button { display: flex; justify-content: center; gap: .5rem; }
+  .binds span { color: var(--muted); }
+  .binds .btnname { color: var(--text); text-align: right; padding-right: .4rem; }
+  .binds .colhead { color: var(--muted); font-size: .8rem; text-align: center; }
 
   pre {
     margin: .7rem 0 0; padding: .6rem .7rem; background: #100d0b;
@@ -248,19 +250,51 @@
 
   <details>
     <summary>Controls</summary>
-    <div class="keys">
-      <button data-cmd="bind" data-value="0">A <span id="key0">Z</span></button>
-      <button data-cmd="bind" data-value="1">B <span id="key1">X</span></button>
-      <button data-cmd="bind" data-value="2">Select <span id="key2">ShiftRight</span></button>
-      <button data-cmd="bind" data-value="3">Start <span id="key3">Enter</span></button>
-      <button data-cmd="bind" data-value="4">Up <span id="key4">Up</span></button>
-      <button data-cmd="bind" data-value="5">Down <span id="key5">Down</span></button>
-      <button data-cmd="bind" data-value="6">Left <span id="key6">Left</span></button>
-      <button data-cmd="bind" data-value="7">Right <span id="key7">Right</span></button>
+    <div class="binds">
+      <span></span>
+      <span class="colhead">Keyboard</span>
+      <span class="colhead">Gamepad</span>
+
+      <span class="btnname">A</span>
+      <button data-cmd="bind" data-value="0"><span id="key0">Z</span></button>
+      <button data-cmd="bindPad" data-value="0"><span id="pad0">b0|b2</span></button>
+
+      <span class="btnname">B</span>
+      <button data-cmd="bind" data-value="1"><span id="key1">X</span></button>
+      <button data-cmd="bindPad" data-value="1"><span id="pad1">b1|b3</span></button>
+
+      <span class="btnname">Select</span>
+      <button data-cmd="bind" data-value="2"><span id="key2">ShiftRight</span></button>
+      <button data-cmd="bindPad" data-value="2"><span id="pad2">b8</span></button>
+
+      <span class="btnname">Start</span>
+      <button data-cmd="bind" data-value="3"><span id="key3">Enter</span></button>
+      <button data-cmd="bindPad" data-value="3"><span id="pad3">b9</span></button>
+
+      <span class="btnname">Up</span>
+      <button data-cmd="bind" data-value="4"><span id="key4">Up</span></button>
+      <button data-cmd="bindPad" data-value="4"><span id="pad4">b12|a1-</span></button>
+
+      <span class="btnname">Down</span>
+      <button data-cmd="bind" data-value="5"><span id="key5">Down</span></button>
+      <button data-cmd="bindPad" data-value="5"><span id="pad5">b13|a1+</span></button>
+
+      <span class="btnname">Left</span>
+      <button data-cmd="bind" data-value="6"><span id="key6">Left</span></button>
+      <button data-cmd="bindPad" data-value="6"><span id="pad6">b14|a0-</span></button>
+
+      <span class="btnname">Right</span>
+      <button data-cmd="bind" data-value="7"><span id="key7">Right</span></button>
+      <button data-cmd="bindPad" data-value="7"><span id="pad7">b15|a0+</span></button>
+    </div>
+    <div class="row">
+      <button data-cmd="resetInput">Reset to defaults</button>
     </div>
     <p class="note">
-      Click a button then press a key to rebind it; bindings are saved in this browser.
-      A connected gamepad works without any setup.
+      Click a slot, then press the key or pad control you want on it. Bindings are saved
+      in this browser. Pad controls read <code>b0</code> for button 0 and
+      <code>a1-</code> for an axis pushed one way, since a d-pad is buttons on some
+      pads and a stick on others.
     </p>
   </details>
 

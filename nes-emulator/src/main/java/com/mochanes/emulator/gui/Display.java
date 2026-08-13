@@ -455,7 +455,7 @@ public class Display extends JPanel implements FrameSink {
     private void applyGamepadSetting() {
         if (settings.gamepadEnabled) {
             if (gamepad == null && controller != null) {
-                gamepad = Gamepad.start(controller);
+                gamepad = Gamepad.start(controller, settings);
                 showToast(gamepad != null
                         ? "Gamepad: " + gamepad.deviceName()
                         : "Gamepad: none detected");
@@ -471,44 +471,144 @@ public class Display extends JPanel implements FrameSink {
      * Modal rebinding table. Click a button row, then press the key to assign;
      * a key already in use is released from its previous button.
      */
-    private void showBindingDialog() {
-        JPanel panel = new JPanel(new GridLayout(Settings.BUTTON_NAMES.length + 1, 2, 6, 6));
-        JButton[] fields = new JButton[Settings.BUTTON_NAMES.length];
+    /** Grabs the next keystroke while a button is being rebound. */
+    private KeyEventDispatcher bindingCapture;
 
-        for (int i = 0; i < Settings.BUTTON_NAMES.length; i++) {
-            final int button = i;
-            panel.add(new JLabel(Settings.BUTTON_NAMES[i] + " :", SwingConstants.RIGHT));
-            JButton b = new JButton(KeyEvent.getKeyText(settings.keyFor(i)));
-            b.setFocusable(true);
-            b.addActionListener(e -> {
-                b.setText("press a key...");
-                b.requestFocusInWindow();
-            });
-            b.addKeyListener(new KeyAdapter() {
-                @Override
-                public void keyPressed(KeyEvent e) {
-                    settings.bind(button, e.getKeyCode());
-                    // Another row may have lost its key; refresh them all.
-                    for (int k = 0; k < fields.length; k++) {
-                        int code = settings.keyFor(k);
-                        fields[k].setText(code < 0 ? "(unbound)" : KeyEvent.getKeyText(code));
-                    }
-                    e.consume();
-                }
-            });
-            fields[i] = b;
-            panel.add(b);
-        }
+    private static String keyLabel(int keyCode) {
+        return keyCode < 0 ? "(unbound)" : KeyEvent.getKeyText(keyCode);
+    }
+
+    private void showBindingDialog() {
+        int rows = Settings.BUTTON_NAMES.length;
+        JPanel panel = new JPanel(new GridLayout(rows + 3, 3, 6, 6));
+        JButton[] keyFields = new JButton[rows];
+        JButton[] padFields = new JButton[rows];
 
         panel.add(new JLabel(""));
-        JLabel hint = new JLabel("click a button, then press a key");
+        panel.add(centred("Keyboard"));
+        panel.add(centred("Gamepad"));
+
+        String padName = Gamepad.detectedName();
+        boolean padPresent = gamepad != null;
+
+        for (int i = 0; i < rows; i++) {
+            final int button = i;
+            panel.add(new JLabel(Settings.BUTTON_NAMES[i] + " :", SwingConstants.RIGHT));
+
+            JButton k = new JButton(keyLabel(settings.keyFor(i)));
+            k.addActionListener(e -> beginCapture(button, k, keyFields));
+            keyFields[i] = k;
+            panel.add(k);
+
+            JButton p = new JButton(Settings.padLabel(settings.padFor(i)));
+            p.setEnabled(padPresent);
+            p.addActionListener(e -> beginPadCapture(button, p, padFields));
+            padFields[i] = p;
+            panel.add(p);
+        }
+
+        panel.add(new JLabel("Pad :", SwingConstants.RIGHT));
+        JLabel padLabel = new JLabel(padName == null ? "none detected"
+                : padPresent ? padName : padName + "  (disabled)");
+        panel.add(padLabel);
+        panel.add(new JLabel(""));
+
+        JLabel hint = new JLabel("click a slot, then press a key or pad control");
         hint.setFont(hint.getFont().deriveFont(Font.ITALIC, 11f));
+        panel.add(new JLabel(""));
         panel.add(hint);
+        panel.add(new JLabel(""));
 
         JOptionPane.showMessageDialog(frame, panel, "Configure Buttons", JOptionPane.PLAIN_MESSAGE);
+        endCapture();
+        endPadCapture();
         settings.save();
         showToast("Bindings saved");
         refocus();
+    }
+
+    private static JLabel centred(String text) {
+        JLabel l = new JLabel(text, SwingConstants.CENTER);
+        l.setFont(l.getFont().deriveFont(Font.BOLD));
+        return l;
+    }
+
+    /**
+     * Waits for one pad control and binds it to {@code button}.
+     *
+     * <p>The pad reader runs on its own thread, so the binding is applied and
+     * the labels refreshed back on the EDT. Only the first control reported is
+     * taken - a stick pushed diagonally would otherwise bind twice.
+     */
+    private void beginPadCapture(int button, JButton target, JButton[] fields) {
+        if (gamepad == null || padCapturing) {
+            return;
+        }
+        padCapturing = true;
+        target.setText("press a pad control...");
+
+        gamepad.setRawListener(token -> SwingUtilities.invokeLater(() -> {
+            if (!padCapturing) {
+                return;
+            }
+            endPadCapture();
+            settings.bindPad(button, token);
+            for (int k = 0; k < fields.length; k++) {
+                fields[k].setText(Settings.padLabel(settings.padFor(k)));
+            }
+        }));
+    }
+
+    private void endPadCapture() {
+        padCapturing = false;
+        if (gamepad != null) {
+            gamepad.setRawListener(null);
+        }
+    }
+
+    private boolean padCapturing;
+
+    /**
+     * Waits for one keystroke and binds it to {@code button}.
+     *
+     * <p>The keystroke is taken at the focus manager rather than from a key
+     * listener on the button. A focused Swing button never sees the keys that
+     * matter here: the arrows are eaten by focus traversal, Tab moves on, and
+     * Space and Enter activate the button instead - which is every one of the
+     * default bindings. Grabbing the event before dispatch makes any key
+     * bindable, and swallowing the whole stroke keeps it out of the emulator.
+     */
+    private void beginCapture(int button, JButton target, JButton[] fields) {
+        if (bindingCapture != null) {
+            return; // a capture is already running; ignore further clicks
+        }
+        target.setText("press a key  (Esc cancels)");
+
+        KeyboardFocusManager kfm = KeyboardFocusManager.getCurrentKeyboardFocusManager();
+        bindingCapture = event -> {
+            if (event.getID() != KeyEvent.KEY_PRESSED) {
+                return true; // swallow the release and typed halves of the stroke
+            }
+            if (event.getKeyCode() != KeyEvent.VK_ESCAPE) {
+                settings.bind(button, event.getKeyCode());
+            }
+            endCapture();
+            // Binding a key takes it from whichever button had it, so every
+            // row is refreshed, not just this one.
+            for (int k = 0; k < fields.length; k++) {
+                fields[k].setText(keyLabel(settings.keyFor(k)));
+            }
+            return true;
+        };
+        kfm.addKeyEventDispatcher(bindingCapture);
+    }
+
+    private void endCapture() {
+        if (bindingCapture != null) {
+            KeyboardFocusManager.getCurrentKeyboardFocusManager()
+                    .removeKeyEventDispatcher(bindingCapture);
+            bindingCapture = null;
+        }
     }
 
     private void showControls() {

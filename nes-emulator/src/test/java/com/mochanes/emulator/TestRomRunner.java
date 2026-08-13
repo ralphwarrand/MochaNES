@@ -89,9 +89,9 @@ public final class TestRomRunner {
                 nes.stepInstruction();
             }
 
-            if (mem.read(0x6001) == 0xDE && mem.read(0x6002) == 0xB0 && mem.read(0x6003) == 0x61) {
+            if (mem.peek(0x6001) == 0xDE && mem.peek(0x6002) == 0xB0 && mem.peek(0x6003) == 0x61) {
                 sawSignature = true;
-                status = mem.read(0x6000);
+                status = mem.peek(0x6000);
                 if (status == STATUS_NEEDS_RESET) {
                     // The ROM asks for a soft reset to continue; honour it.
                     nes.reset();
@@ -107,7 +107,7 @@ public final class TestRomRunner {
     private static String readMessage(Memory mem) {
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < 512; i++) {
-            int c = mem.read(0x6004 + i);
+            int c = mem.peek(0x6004 + i);
             if (c == 0) {
                 break;
             }

@@ -192,6 +192,11 @@ final class Renderer {
             + "gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);"
             + "gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);"
             + "gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);"
+            // Allocated once at the console's resolution. Each frame then
+            // updates it in place with texSubImage2D; re-running texImage2D
+            // every frame asks the driver to reallocate the texture 60 times a
+            // second for a picture whose size never changes.
+            + "gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 256, 240, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);"
             + "N.gl = gl; N.prog = pr; N.tex = tx; N.u = {};"
             + "var names = ['uOutput','uCrt','uMask','uMaskType','uBloom','uFocus','uScan','uCurve','uSat','uBright'];"
             + "for (var i = 0; i < names.length; i++) N.u[names[i]] = gl.getUniformLocation(pr, names[i]);"
@@ -203,6 +208,28 @@ final class Renderer {
             + "window.NESW.pixels[index] = 0xFF000000 | ((rgb & 0xFF) << 16)"
             + " | (rgb & 0xFF00) | ((rgb >> 16) & 0xFF);")
     static native void setPixel(int index, int rgb);
+
+    /**
+     * Converts and uploads a whole frame in one call.
+     *
+     * <p>{@link #setPixel} is one JavaScript call and two global lookups per
+     * pixel - 61,440 of each per frame - because the generated code keeps it as
+     * a real function rather than inlining it. Handing the finished frame over
+     * once and looping inside JavaScript replaces all of that with a single
+     * crossing over a typed array.
+     *
+     * <p>A Java {@code int[]} arrives as TeaVM's array wrapper, whose elements
+     * are the {@code data} typed array; the fallback covers a build that passes
+     * the typed array straight through.
+     */
+    @JSBody(params = { "src" }, script = ""
+            + "var p = window.NESW.pixels;"
+            + "var s = src.data || src;"
+            + "for (var i = 0; i < 61440; i++) {"
+            + "  var c = s[i];"
+            + "  p[i] = 0xFF000000 | ((c & 0xFF) << 16) | (c & 0xFF00) | ((c >> 16) & 0xFF);"
+            + "}")
+    static native void uploadFrame(int[] src);
 
     /** Uploads and draws the completed frame. */
     @JSBody(params = {}, script = ""
@@ -229,7 +256,7 @@ final class Renderer {
             + "gl.viewport(0, 0, cv.width, cv.height);"
             + "gl.uniform2f(N.u.uOutput, cv.width, cv.height);"
             + "gl.bindTexture(gl.TEXTURE_2D, N.tex);"
-            + "gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 256, 240, 0, gl.RGBA, gl.UNSIGNED_BYTE, N.bytes);"
+            + "gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 256, 240, gl.RGBA, gl.UNSIGNED_BYTE, N.bytes);"
             + "gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);")
     static native void present();
 

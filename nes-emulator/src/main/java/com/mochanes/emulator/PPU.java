@@ -583,8 +583,7 @@ public class PPU {
             }
         }
 
-        int colorIndex = readVram(0x3F00 + (finalPalette << 2) + finalPixel);
-        int color = PALETTE_LOOKUP[colorIndex & 0x3F];
+        int color = paletteRgb[((finalPalette << 2) | finalPixel) & 0x1F];
 
         if (fastBuffer != null) {
             // Fast Path: Direct Array Access (No Bounds Check, No Virtual Call)
@@ -727,6 +726,40 @@ public class PPU {
             if (address == 0x1C)
                 address = 0x0C;
             paletteRam[address] = (byte) val;
+            paletteRgb[address] = PALETTE_LOOKUP[val & 0x3F];
+            // The four mirrored entries share storage, so the cache entry for
+            // the alias has to move with them.
+            if (address == 0x00 || address == 0x04 || address == 0x08 || address == 0x0C) {
+                paletteRgb[address + 0x10] = paletteRgb[address];
+            }
+        }
+    }
+
+    /**
+     * {@link #paletteRam} already resolved through its mirroring and the master
+     * palette, so drawing a pixel is one array read.
+     *
+     * <p>Worth the cache because the alternative ran on every visible dot:
+     * {@code readVram} re-tested the address against each memory region and
+     * re-applied the palette mirroring 61,440 times a frame, to reach 32 bytes
+     * that change a handful of times per frame at most.
+     */
+    private final int[] paletteRgb = new int[32];
+
+    /** Rebuilds the whole cache, after a state load or a copy. */
+    private void refreshPaletteCache() {
+        for (int i = 0; i < paletteRgb.length; i++) {
+            int a = i;
+            if (a == 0x10) {
+                a = 0x00;
+            } else if (a == 0x14) {
+                a = 0x04;
+            } else if (a == 0x18) {
+                a = 0x08;
+            } else if (a == 0x1C) {
+                a = 0x0C;
+            }
+            paletteRgb[i] = PALETTE_LOOKUP[paletteRam[a] & 0x3F];
         }
     }
 
@@ -852,6 +885,7 @@ public class PPU {
         System.arraycopy(this.oam, 0, newPPU.oam, 0, this.oam.length);
 
         newPPU.mirroring = this.mirroring;
+        newPPU.refreshPaletteCache();
 
         return newPPU;
     }
@@ -889,6 +923,7 @@ public class PPU {
         System.arraycopy(source.oam, 0, this.oam, 0, source.oam.length);
 
         this.mirroring = source.mirroring;
+        refreshPaletteCache();
         // DO NOT copy fastBuffer! It is a structural reference to the Display.
         // this.fastBuffer = source.fastBuffer;
     }
@@ -960,6 +995,7 @@ public class PPU {
 
         dis.readFully(this.nametables);
         dis.readFully(this.paletteRam);
+        refreshPaletteCache();
         dis.readFully(this.oam);
 
         this.mirroring = dis.readInt();

@@ -150,25 +150,34 @@ final class Platform {
             + "var p = null;"
             + "for (var i = 0; i < pads.length; i++) if (pads[i]) { p = pads[i]; break; }"
             + "if (!p) return -1;"
-            + "var b = p.buttons, a = p.axes, out = 0;"
-            + "function down(i) { return b[i] && (b[i].pressed || b[i].value > 0.5); }"
-            + "if (down(0) || down(2)) out |= 1;"
-            + "if (down(1) || down(3)) out |= 2;"
-            + "if (down(8)) out |= 4;"
-            + "if (down(9)) out |= 8;"
-            + "if (down(12)) out |= 16;"
-            + "if (down(13)) out |= 32;"
-            + "if (down(14)) out |= 64;"
-            + "if (down(15)) out |= 128;"
-            + "var dz = 0.4;"
-            + "if (a.length > 1) {"
-            + "  if (a[1] < -dz) out |= 16;"
-            + "  if (a[1] > dz) out |= 32;"
-            + "  if (a[0] < -dz) out |= 64;"
-            + "  if (a[0] > dz) out |= 128;"
+            + "var b = p.buttons, out = 0;"
+            + "for (var i = 0; i < b.length && i < 31; i++) {"
+            + "  if (b[i] && (b[i].pressed || b[i].value > 0.5)) out |= (1 << i);"
             + "}"
             + "return out;")
-    static native int readGamepad();
+    static native int readPadButtons();
+
+    /**
+     * Axis deflections of the first pad, two bits per axis.
+     *
+     * <p>Bit {@code 2*i} is axis i pushed negative past the deadzone, bit
+     * {@code 2*i+1} positive; up to 16 axes. Returned separately from the
+     * buttons so the Java side can bind either, the way a d-pad may be a hat
+     * on one pad and a stick on another.
+     */
+    @JSBody(params = {}, script = ""
+            + "if (!navigator.getGamepads) return -1;"
+            + "var pads = navigator.getGamepads();"
+            + "var p = null;"
+            + "for (var i = 0; i < pads.length; i++) if (pads[i]) { p = pads[i]; break; }"
+            + "if (!p) return -1;"
+            + "var a = p.axes, out = 0, dz = 0.4;"
+            + "for (var i = 0; i < a.length && i < 16; i++) {"
+            + "  if (a[i] < -dz) out |= (1 << (2 * i));"
+            + "  if (a[i] > dz) out |= (1 << (2 * i + 1));"
+            + "}"
+            + "return out;")
+    static native int readPadAxes();
 
     /** Wires up ROM loading from the picker, drag-and-drop and the sample button. */
     @JSBody(params = { "handler" }, script = ""
@@ -354,6 +363,20 @@ final class Platform {
             + "  qPad.hidden = false;"
             + "}")
     static native void initTouch(CommandCallback handler);
+
+    /**
+     * Reports that the page lost focus, so held buttons can be released.
+     *
+     * <p>A key let go while another window or tab has focus never delivers its
+     * keyup, and the button would stay down until that key was pressed and
+     * released again. Alt-tabbing mid-jump is enough to trigger it.
+     */
+    @JSBody(params = { "handler" }, script = ""
+            + "window.addEventListener('blur', function() { handler('inputLost', ''); });"
+            + "document.addEventListener('visibilitychange', function() {"
+            + "  if (document.hidden) handler('inputLost', '');"
+            + "});")
+    static native void initFocusLoss(CommandCallback handler);
 
     /**
      * Whether the debugger panel is open.

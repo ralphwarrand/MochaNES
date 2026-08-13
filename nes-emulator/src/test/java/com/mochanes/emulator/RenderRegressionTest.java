@@ -345,6 +345,128 @@ public class RenderRegressionTest {
                         + "columns disagreeing (rows affected):" + bad, 0, columns);
     }
 
+    /**
+     * The same one-pixel invariant, extended over the right edge.
+     *
+     * <p>{@link #scrollingMovesTheImageByExactlyOnePixel} compares x against
+     * x+1 and so stops at 254 - it cannot see column 255 at all. That is the
+     * column fed by the last background fetch of the scanline, so a fault there
+     * is invisible to it. With horizontal mirroring the picture repeats every
+     * 256 pixels, so the comparison simply wraps: column 255 after the scroll
+     * must equal column 0 before it.
+     */
+    @Test
+    public void scrollingIsExactAcrossTheRightEdge() throws Exception {
+        Capture capture = new Capture();
+        NES nes = new NES(capture, AudioSink.SILENT);
+        nes.loadROM(scrollingBackgroundRom(false));
+        nes.reset();
+
+        int guard = 12_000_000;
+        while (capture.frames < FRAMES && guard-- > 0) {
+            nes.stepInstruction();
+        }
+        int[] before = capture.pixels.clone();
+
+        int target = capture.frames + 1;
+        while (capture.frames < target && guard-- > 0) {
+            nes.stepInstruction();
+        }
+        int[] after = capture.pixels.clone();
+
+        int[] badPerColumn = new int[256];
+        for (int y = 0; y < 240; y++) {
+            for (int x = 0; x < 256; x++) {
+                int expected = before[y * 256 + ((x + 1) & 0xFF)] & 0xFFFFFF;
+                if ((after[y * 256 + x] & 0xFFFFFF) != expected) {
+                    badPerColumn[x]++;
+                }
+            }
+        }
+
+        StringBuilder bad = new StringBuilder();
+        int columns = 0;
+        for (int x = 0; x < 256; x++) {
+            if (badPerColumn[x] > 0) {
+                columns++;
+                if (bad.length() < 200) {
+                    bad.append(' ').append(x).append('(').append(badPerColumn[x]).append(')');
+                }
+            }
+        }
+        assertEquals("scrolling one pixel did not shift the picture by exactly one pixel "
+                + "(wrapping at the right edge); columns disagreeing (rows affected):" + bad,
+                0, columns);
+    }
+
+    /**
+     * The one-pixel invariant while crossing a nametable boundary.
+     *
+     * <p>The horizontal-mirroring ROM shows the same page twice, so a fault in
+     * the coarse-X wrap - {@code v ^= 0x0400} selecting the wrong page, or the
+     * switch landing a tile early or late - moves the picture from one page to
+     * an identical one and cannot be seen. Under vertical mirroring the two
+     * pages differ (only $2000 is filled), so the crossing is observable. This
+     * is the arrangement a horizontally scrolling game uses.
+     */
+    @Test
+    public void scrollingIsExactAcrossNametableBoundary() throws Exception {
+        Capture capture = new Capture();
+        NES nes = new NES(capture, AudioSink.SILENT);
+        nes.loadROM(scrollingBackgroundRom(true));
+        nes.reset();
+
+        int guard = 12_000_000;
+        // Start from a known scroll position. The ROM keeps its scroll counter
+        // in zero page $10 and increments it once per frame; anchoring to 1
+        // means the 250 steps below cannot run into the 255->0 wrap, where the
+        // picture legitimately jumps rather than shifting by one.
+        while (nes.getMemory().peek(0x10) != 1 && guard-- > 0) {
+            nes.stepInstruction();
+        }
+        int startFrame = capture.frames;
+        while (capture.frames == startFrame && guard-- > 0) {
+            nes.stepInstruction();
+        }
+
+        // Check the invariant over a long stretch of scroll positions, so every
+        // fine-X phase and both crossings (into $2400 and back) are covered.
+        StringBuilder bad = new StringBuilder();
+        int badFrames = 0;
+        int[] before = capture.pixels.clone();
+        for (int step = 0; step < 250; step++) {
+            int target = capture.frames + 1;
+            while (capture.frames < target && guard-- > 0) {
+                nes.stepInstruction();
+            }
+            int[] after = capture.pixels.clone();
+
+            int mismatches = 0;
+            int firstColumn = -1;
+            for (int y = 0; y < 240; y++) {
+                for (int x = 0; x < 255; x++) {
+                    if ((after[y * 256 + x] & 0xFFFFFF) != (before[y * 256 + x + 1] & 0xFFFFFF)) {
+                        mismatches++;
+                        if (firstColumn < 0) {
+                            firstColumn = x;
+                        }
+                    }
+                }
+            }
+            if (mismatches > 0) {
+                badFrames++;
+                if (bad.length() < 200) {
+                    bad.append(" step=").append(step).append(" firstCol=").append(firstColumn)
+                            .append(" px=").append(mismatches);
+                }
+            }
+            before = after;
+        }
+
+        assertEquals("scrolling across a nametable boundary did not shift the picture by "
+                + "exactly one pixel; offending frames:" + bad, 0, badFrames);
+    }
+
     @Test
     public void emulationIsDeterministic() throws Exception {
         // Two runs of the same ROM must agree exactly. Determinism is what save

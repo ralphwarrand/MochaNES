@@ -288,10 +288,15 @@ public class CPU {
 
             setFlag(FLAG_I, 1);
 
-            // NMI Hijack Check:
-            // Check if NMI is Pending OR if it WILL fire during the vector fetch sequence.
+            // NMI Hijack Check: an NMI edge latched during the push cycles
+            // steals the vector fetch. The latch is what counts, not the PPU's
+            // NMI level - that stays high for the whole of VBlank, which would
+            // hijack every interrupt taken anywhere in those ~2270 cycles.
+            // pollNmiLine runs on every bus cycle, so by the time control
+            // reaches here nmiPending already covers an edge that arrived
+            // mid-instruction, and no lookahead is needed.
             int vector = 0xFFFE; // Default IRQ
-            if (memory.isNmiAsserted() || memory.willNmiFire(5)) {
+            if (nmiPending) {
                 vector = 0xFFFA; // NMI Hijack!
                 suppressNextNMI(); // Artificial edge consumption
             }
@@ -313,9 +318,9 @@ public class CPU {
 
         setFlag(FLAG_I, 1);
 
-        // NMI Hijack Check for BRK
+        // NMI Hijack Check for BRK - see irq() for why this is the latch.
         int vector = 0xFFFE;
-        if (memory.isNmiAsserted() || memory.willNmiFire(5)) {
+        if (nmiPending) {
             vector = 0xFFFA;
             suppressNextNMI();
         }

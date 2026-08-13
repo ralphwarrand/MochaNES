@@ -41,11 +41,25 @@ public class BlarggTestRomTest {
      */
     static final List<String> KNOWN_FAILING = Arrays.asList(
             // Need the VBlank flag sampled at an exact dot within the CPU's read
-            // cycle. The clock is now bus-driven and instruction timing is exact
+            // cycle. The clock is bus-driven and instruction timing is exact
             // (verified by instr_timing), but the PPU is still stepped in whole
             // 3-dot groups per CPU cycle, so a read cannot land mid-cycle.
-            "roms/test/ppu_vbl_nmi/rom_singles/  (except 04-nmi_control)",
+            "roms/test/ppu_vbl_nmi/rom_singles/05-nmi_timing.nes",
+            "roms/test/ppu_vbl_nmi/rom_singles/06-suppression.nes",
+            "roms/test/ppu_vbl_nmi/rom_singles/07-nmi_on_timing.nes",
+            "roms/test/ppu_vbl_nmi/rom_singles/08-nmi_off_timing.nes",
+            "roms/test/ppu_vbl_nmi/rom_singles/10-even_odd_timing.nes",
+            // Interrupts are only serviced at instruction boundaries, so an edge
+            // arriving mid-instruction is acted on a cycle or two late. All four
+            // are close now - 2-nmi_and_brk has the right three row types and
+            // one row in the wrong place - but exact placement needs the CPU to
+            // poll the interrupt lines per cycle.
             "roms/test/cpu_interrupts_v2/rom_singles/  (except 1-cli_latency)",
+            // Sub-tests 2-8 pass. #9 onwards set $2000=$10, putting the A12 rise
+            // in the background fetches rather than the sprite fetches; a fixed
+            // per-scanline clock dot cannot represent both (the ROM's own
+            // constants put the scanline 0->1 spacing at 320 dots there vs 341).
+            // Needs real A12-rising-edge clocking during rendering.
             "roms/test/mmc3_test_2/rom_singles/4-scanline_timing.nes",
             "roms/test/mmc3_test_2/rom_singles/6-MMC3_alt.nes");
 
@@ -104,6 +118,15 @@ public class BlarggTestRomTest {
         // Interrupt-disable latency: CLI/SEI/PLP take effect one instruction late.
         cases.add(new Object[] { "cpu_interrupts/1-cli_latency",
                 "roms/test/cpu_interrupts_v2/rom_singles/1-cli_latency.nes", 4000 });
+
+        // VBlank flag and NMI behaviour. The rest of this set still needs the
+        // PPU stepped at dot granularity; see KNOWN_FAILING.
+        String[] vblTests = { "01-vbl_basics", "02-vbl_set_time", "03-vbl_clear_time",
+                "04-nmi_control", "09-even_odd_frames" };
+        for (String t : vblTests) {
+            cases.add(new Object[] { "ppu_vbl_nmi/" + t,
+                    "roms/test/ppu_vbl_nmi/rom_singles/" + t + ".nes", 4000 });
+        }
 
         // APU length counter and IRQ flag basics.
         String[] apuTests = { "1-len_ctr", "2-len_table", "3-irq_flag" };
