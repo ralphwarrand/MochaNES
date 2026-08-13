@@ -85,7 +85,7 @@ public final class WebMain {
     private static boolean crtOn;
     private static float mask = 0.55f;
     private static float maskType;
-    private static float bloom = 0.5f;
+    private static float bloom = 0.3f;
     private static float focus = 0.6f;
     private static float scan = 0.8f;
     private static float curve;
@@ -297,10 +297,10 @@ public final class WebMain {
 
     private static void applyPreset(String preset) {
         switch (preset) {
-            case "trinitron" -> set(0.55f, 0f, 0.5f, 0.6f, 0.8f, 1.0f, 1.05f);
-            case "consumer" -> set(0.7f, 1f, 0.75f, 0.35f, 0.9f, 1.1f, 1.15f);
-            case "arcade" -> set(0.8f, 2f, 0.9f, 0.5f, 1.0f, 1.15f, 1.2f);
-            case "sharp" -> set(0.25f, 0f, 0.2f, 0.95f, 0.55f, 1.0f, 1.0f);
+            case "trinitron" -> set(0.55f, 0f, 0.3f, 0.6f, 0.8f, 1.0f, 1.05f);
+            case "consumer" -> set(0.7f, 1f, 0.45f, 0.35f, 0.9f, 1.1f, 1.15f);
+            case "arcade" -> set(0.8f, 2f, 0.55f, 0.5f, 1.0f, 1.15f, 1.2f);
+            case "sharp" -> set(0.25f, 0f, 0.12f, 0.95f, 0.55f, 1.0f, 1.0f);
             default -> { return; }
         }
         crtOn = true;
