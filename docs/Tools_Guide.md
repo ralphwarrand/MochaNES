@@ -112,8 +112,12 @@ transmission, so the dials are independent.
 
 ## 4. The Debugger
 
-A `DebuggerWindow` opens alongside the emulator, with tabs for **Controls**,
-**Disassembly**, **Memory** and **CHR-ROM**.
+Open it with **File > Debugger**. It stays closed otherwise, since it is a
+developer tool rather than something to have beside the game every launch, and
+it is built on first use. Reopening raises the existing window, so the tab and
+scroll position survive.
+
+It has tabs for **Controls**, **Disassembly**, **Memory** and **CHR-ROM**.
 
 The memory view covers the full 64KB map:
 

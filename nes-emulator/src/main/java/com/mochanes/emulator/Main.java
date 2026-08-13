@@ -83,9 +83,29 @@ public class Main {
         currentRunner = runner;
         System.out.println("Emulator running.");
 
+        // The debugger is not opened here. It is a developer tool, and having it
+        // appear beside the game every launch is noise for anyone who just wants
+        // to play. File > Debugger opens it, and it is built on first use.
+        display.setDebuggerHandler(() -> showDebugger(nes, runner));
+    }
+
+    /**
+     * Opens the debugger, creating it the first time and reusing it after.
+     *
+     * <p>A previous window is disposed when a new ROM is loaded, since it holds
+     * references to the machine that has been replaced.
+     */
+    private static void showDebugger(NES nes, EmulatorRunner runner) {
         SwingUtilities.invokeLater(() -> {
-            currentDebugger = new DebuggerWindow(nes, runner);
+            // Loading a ROM disposes the old window and clears this, so a
+            // surviving one always belongs to the machine now running. Raise it
+            // rather than rebuilding, which would lose the open tab and scroll
+            // position.
+            if (currentDebugger == null) {
+                currentDebugger = new DebuggerWindow(nes, runner);
+            }
             currentDebugger.setVisible(true);
+            currentDebugger.toFront();
         });
     }
 

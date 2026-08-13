@@ -48,9 +48,15 @@ public class Display extends JPanel implements FrameSink {
     private java.util.function.Consumer<java.io.File> romLoadHandler;
     /** Called when the user chooses File > Reset. */
     private Runnable resetHandler;
+    private Runnable debuggerHandler;
 
     public void setRomLoadHandler(java.util.function.Consumer<java.io.File> handler) {
         this.romLoadHandler = handler;
+    }
+
+    /** Called when the user asks for the debugger, which is hidden by default. */
+    public void setDebuggerHandler(Runnable handler) {
+        this.debuggerHandler = handler;
     }
 
     public void setResetHandler(Runnable handler) {
@@ -168,6 +174,16 @@ public class Display extends JPanel implements FrameSink {
             refocus();
         });
         file.add(reset);
+
+        file.addSeparator();
+        JMenuItem debugger = new JMenuItem("Debugger");
+        debugger.addActionListener(e -> {
+            if (debuggerHandler != null) {
+                debuggerHandler.run();
+            }
+            refocus();
+        });
+        file.add(debugger);
 
         file.addSeparator();
         JMenuItem exit = new JMenuItem("Exit");
