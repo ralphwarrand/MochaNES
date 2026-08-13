@@ -18,6 +18,19 @@ mvn clean verify     # build and test
 The browser build is behind a profile, so an ordinary build never pays for it:
 
 ```bash
+./serve.sh                              # build and serve on localhost:8000
+./serve.sh --test                       # and run the smoke test first
+./serve.sh --rom roms/MMC3/kirby.nes    # load a ROM on startup
+```
+
+It prints an address your phone can reach on the same wifi, which is the only
+way to try the touch controls. The site cannot be opened from disk: fetching a
+ROM and starting audio both need a real origin, so `file://` gives a page that
+half works.
+
+The underlying commands, if you would rather run them yourself:
+
+```bash
 mvn -Pweb package                                   # output in nes-web/target/site
 node nes-web/src/test/js/smoke.js nes-web/target/site
 ```

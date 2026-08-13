@@ -170,7 +170,26 @@ that diverges indicates a real behavioural change.
 
 ---
 
-## 7. Further reading
+## 7. The browser version
+
+```bash
+./serve.sh                              # build and serve on localhost:8000
+./serve.sh --test                       # run the smoke test after building
+./serve.sh --no-build                   # serve what is already built
+./serve.sh --port 9000 --open           # different port, open a browser
+./serve.sh --rom roms/MMC3/kirby.nes    # load a ROM on startup
+```
+
+The address it prints for your phone works for anything on the same wifi, which
+is how to try the on-screen controls. `?rom=<name>` loads any ROM sitting beside
+the page, so a particular game can be linked directly.
+
+After a rebuild, reload with `Ctrl-Shift-R`. The compiled script is cached hard,
+and an ordinary reload will quietly show you the previous build.
+
+---
+
+## 8. Further reading
 
 * [Architecture Reference](Architecture.md) - how the emulator is put together.
 * [Accuracy Report](Accuracy.md) - what passes, what does not, and why.
