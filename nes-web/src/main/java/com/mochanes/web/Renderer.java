@@ -74,11 +74,10 @@ final class Renderer {
                line blooms wide enough to close the gap above it while a dim one
                stays thin. That, not a dark overlay, is what scanlines are. */
             + " float beam(float d, float level) {"
-            + "   float w = mix(0.34, 0.95, clamp(level, 0.0, 1.0));"
-            + "   w = mix(w, 1.6, 1.0 - uFocus);"
-            + "   w = mix(1.6, w, uScan);"
+            + "   float w = mix(0.30, 0.72, sqrt(clamp(level, 0.0, 1.0)));"
+            + "   w *= mix(2.4, 1.0, uFocus);"
             + "   float n = d / max(w, 0.05);"
-            + "   return exp(-n * n * 2.0); }"
+            + "   return exp(-n * n * 1.7); }"
 
             /* Aperture grille, shadow mask and slot mask, in screen space so the
                structure stays crisp instead of aliasing against the source. */
@@ -95,6 +94,11 @@ final class Renderer {
             + "     return vec3(abs(q - r) < 0.5 ? 1.0 : 0.4); }"
             + "   return vec3(1.0); }"
 
+            + " float maskMean() {"
+            + "   if (uMaskType < 0.5) return 0.52;"
+            + "   if (uMaskType < 1.5) return 0.56;"
+            + "   if (uMaskType < 2.5) return 0.70;"
+            + "   return 1.0; }"
             + " void main() {"
             + "   vec2 uv = vUv;"
             + "   if (uCurve > 0.001) {"
@@ -110,7 +114,11 @@ final class Renderer {
             + "   float f = py - row;"
             + "   vec3 a = line(uv.x, row);"
             + "   vec3 b = line(uv.x, row + 1.0);"
-            + "   vec3 col = a * beam(f, dot(a, LUMA)) + b * beam(1.0 - f, dot(b, LUMA));"
+            + "   float wa = beam(f, dot(a, LUMA));"
+            + "   float wb = beam(1.0 - f, dot(b, LUMA));"
+            + "   float sum = max(wa + wb, 0.001);"
+            + "   vec3 col = (a * wa + b * wb) / sum;"
+            + "   col *= mix(1.0, min(sum, 1.0), uScan);"
 
             /* Halation: light scattering forward through the glass, driven only
                by the bright parts of a wide neighbourhood. */
@@ -124,7 +132,7 @@ final class Renderer {
             + "     col += glow * uBloom * 0.24; }"
             + "   vec2 sp = vUv * uOutput;"
             + "   vec3 m = mix(vec3(1.0), maskAt(sp), uMask);"
-            + "   col *= m * (1.0 / mix(1.0, 0.62, uMask)) * uBright;"
+            + "   col *= m * (1.0 / mix(1.0, maskMean(), uMask)) * uBright;"
 
             /* A soft shoulder instead of a hard clamp, so highlights roll off the
                way a phosphor saturates rather than flat-topping. */
