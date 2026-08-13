@@ -92,7 +92,14 @@ finally:
     s.close()
 " 2>/dev/null; then
     echo "error: port $PORT is already in use" >&2
-    echo "       stop the other server, or pass --port $((PORT + 1))" >&2
+    # Naming the process and the exact command to stop it saves a search. An
+    # earlier serve.sh left behind is by far the most likely culprit.
+    HOLDER="$(ss -ltnp 2>/dev/null | grep ":$PORT " | grep -o 'users:.*' || true)"
+    [[ -n "$HOLDER" ]] && echo "       held by: $HOLDER" >&2
+    echo >&2
+    echo "       stop it:      fuser -k $PORT/tcp" >&2
+    echo "       or if it is an old serve.sh:  pkill -f \"http.server $PORT\"" >&2
+    echo "       or use another port:          ./serve.sh --port $((PORT + 1))" >&2
     exit 1
 fi
 
