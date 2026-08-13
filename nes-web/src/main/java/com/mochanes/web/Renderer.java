@@ -50,10 +50,17 @@ final class Renderer {
             + " const vec2 SRC = vec2(256.0, 240.0);"
             + " const vec3 LUMA = vec3(0.299, 0.587, 0.114);"
 
-            /* sRGB and linear light: compositing in linear is what keeps the
-               bloom and the scanline falloff from looking muddy. */
-            + " vec3 toLinear(vec3 c) { return pow(max(c, 0.0), vec3(2.2)); }"
-            + " vec3 toSrgb(vec3 c) { return pow(max(c, 0.0), vec3(0.4545)); }"
+            /* Compositing in linear light is what keeps the bloom and the
+               scanline falloff from looking muddy, but the conversion sits in
+               the hottest path there is: every texture fetch runs it, and there
+               are around twenty per output pixel. At pow(c, 2.2) that is sixty
+               pow calls per pixel and it dominated the frame.
+
+               Squaring is gamma 2.0 rather than 2.2. The difference is a slight
+               shift in midtone contrast, far below what this effect's own
+               softness hides, and it costs one multiply instead. */
+            + " vec3 toLinear(vec3 c) { c = max(c, 0.0); return c * c; }"
+            + " vec3 toSrgb(vec3 c) { return sqrt(max(c, 0.0)); }"
             + " vec3 fetch(float x, float row) {"
             + "   if (row < 0.0 || row > SRC.y - 1.0) return vec3(0.0);"
             + "   return toLinear(texture2D(uTex, vec2(x, (row + 0.5) / SRC.y)).rgb); }"
