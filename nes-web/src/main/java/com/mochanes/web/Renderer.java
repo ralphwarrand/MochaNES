@@ -117,11 +117,11 @@ final class Renderer {
             + "   if (uBloom > 0.001) {"
             + "     float t = 1.0 / SRC.x;"
             + "     vec3 glow = vec3(0.0);"
-            + "     for (int i = -3; i <= 3; i++) {"
+            + "     for (int i = -2; i <= 2; i++) {"
             + "       float o = float(i);"
-            + "       vec3 s = fetch(uv.x + o * t * 2.0, row) + fetch(uv.x + o * t * 2.0, row + 1.0);"
-            + "       glow += max(s * 0.5 - 0.35, 0.0) * (1.0 - abs(o) / 4.0); }"
-            + "     col += glow * uBloom * 0.28; }"
+            + "       vec3 s = fetch(uv.x + o * t * 2.5, row) + fetch(uv.x + o * t * 2.5, row + 1.0);"
+            + "       glow += max(s * 0.5 - 0.35, 0.0) * (1.0 - abs(o) / 3.0); }"
+            + "     col += glow * uBloom * 0.36; }"
             + "   vec2 sp = vUv * uOutput;"
             + "   vec3 m = mix(vec3(1.0), maskAt(sp), uMask);"
             + "   col *= m * (1.0 / mix(1.0, 0.62, uMask)) * uBright;"
@@ -192,16 +192,18 @@ final class Renderer {
             + "  N.ctx2d.putImageData(N.img, 0, 0);"
             + "  return; }"
             + "var gl = N.gl, cv = N.canvas;"
-            /* The shader costs roughly two dozen texture fetches per output
-               pixel, so the size of the drawing buffer is the whole performance
-               story. Rendering at the full device pixel ratio on a HiDPI screen
-               quadruples that, for detail an effect this soft cannot show, and
-               fullscreen on a large panel multiplies it again. Cap both. */
-            + "var qDpr = Math.min(window.devicePixelRatio || 1, 1.25);"
-            + "var dw = Math.max(1, Math.round(cv.clientWidth * qDpr));"
-            + "var dh = Math.max(1, Math.round(cv.clientHeight * qDpr));"
-            + "var qCap = 1400;"
-            + "if (dw > qCap) { dh = Math.max(1, Math.round(dh * qCap / dw)); dw = qCap; }"
+            /* The drawing buffer is kept at exactly one CSS pixel per texel.
+               The shadow mask is drawn in buffer pixels - stripes three across -
+               so any mismatch between buffer and displayed size makes the
+               browser rescale them, and the mask turns into a blurred smear.
+               That is what a smaller buffer bought in performance and cost in
+               appearance, most visibly in fullscreen where the gap is widest.
+
+               Rendering above one CSS pixel is still refused: at device pixel
+               ratio 2 it quadruples the fragment count for mask detail the eye
+               cannot separate anyway. */
+            + "var dw = Math.max(1, Math.round(cv.clientWidth));"
+            + "var dh = Math.max(1, Math.round(cv.clientHeight));"
             + "if (cv.width !== dw || cv.height !== dh) { cv.width = dw; cv.height = dh; }"
             + "gl.viewport(0, 0, cv.width, cv.height);"
             + "gl.uniform2f(N.u.uOutput, cv.width, cv.height);"
