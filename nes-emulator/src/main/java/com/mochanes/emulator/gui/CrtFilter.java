@@ -30,6 +30,8 @@ import java.util.stream.IntStream;
  */
 public class CrtFilter {
 
+
+
     public enum Mask {
         NONE, APERTURE_GRILLE, SHADOW_MASK, SLOT_MASK
     }
@@ -58,7 +60,6 @@ public class CrtFilter {
     public Mask mask = Mask.APERTURE_GRILLE;
 
     private float curvature = 0.0f; // barrel distortion; 0 = flat face
-    private float tilt = 0.0f; // off-axis viewing angle (the "3D" bit)
     private float maskStrength = 0.50f;
     private float beamMin = 0.42f; // beam sigma (in scanlines) when dark
     private float beamMax = 1.05f; // beam sigma when fully driven
@@ -108,6 +109,71 @@ public class CrtFilter {
     private float[] beamLut;
     private float[] beamNormLut;
 
+    /**
+     * The mask's attenuation, precomputed for one full period of rows.
+     *
+     * <p>The mask is a fixed pattern in screen space repeating every few rows
+     * and every few columns, and its strength folds in as a constant. Working
+     * that out per pixel cost a modulo, three comparisons and three multiplies
+     * on every one of a megapixel-plus; laid out per row it is three sequential
+     * reads instead.
+     */
+    private float[] maskRows;
+    private int maskRowPeriod;
+    private Mask maskRowsFor;
+    private float maskRowsStrength = -1f;
+    private int maskRowsWidth = -1;
+
+    private void ensureMaskRows() {
+        if (maskRows != null && maskRowsFor == mask && maskRowsStrength == maskStrength
+                && maskRowsWidth == outW) {
+            return;
+        }
+        maskRowPeriod = (mask == Mask.SLOT_MASK) ? 6 : (mask == Mask.SHADOW_MASK ? 2 : 1);
+        maskRows = new float[maskRowPeriod * outW * 3];
+        float k = maskStrength;
+        for (int oy = 0; oy < maskRowPeriod; oy++) {
+            for (int ox = 0; ox < outW; ox++) {
+                float mr = 1f, mg = 1f, mb = 1f;
+                switch (mask) {
+                    case APERTURE_GRILLE: {
+                        int p = ox % 3;
+                        mr = (p == 0) ? 1f : 0f;
+                        mg = (p == 1) ? 1f : 0f;
+                        mb = (p == 2) ? 1f : 0f;
+                        break;
+                    }
+                    case SHADOW_MASK: {
+                        int p = (ox + (oy % 2) * 3) % 6;
+                        mr = (p < 2) ? 1f : 0f;
+                        mg = (p >= 2 && p < 4) ? 1f : 0f;
+                        mb = (p >= 4) ? 1f : 0f;
+                        break;
+                    }
+                    case SLOT_MASK: {
+                        int p = (ox + ((oy / 3) % 2) * 3) % 6;
+                        mr = (p < 2) ? 1f : 0f;
+                        mg = (p >= 2 && p < 4) ? 1f : 0f;
+                        mb = (p >= 4) ? 1f : 0f;
+                        if (oy % 6 == 5) {
+                            mr = mg = mb = 0f;
+                        }
+                        break;
+                    }
+                    default:
+                        break;
+                }
+                int i = (oy * outW + ox) * 3;
+                maskRows[i] = 1f - k * (1f - mr);
+                maskRows[i + 1] = 1f - k * (1f - mg);
+                maskRows[i + 2] = 1f - k * (1f - mb);
+            }
+        }
+        maskRowsFor = mask;
+        maskRowsStrength = maskStrength;
+        maskRowsWidth = outW;
+    }
+
     // Horizontal resample taps
     private int hTaps;
     private int[] hIndex;
@@ -150,9 +216,6 @@ public class CrtFilter {
         curvature = clamp(curvature + delta, 0f, 0.40f);
     }
 
-    public void adjustTilt(float delta) {
-        tilt = clamp(tilt + delta, -0.35f, 0.35f);
-    }
 
     /** How strongly the shadow mask attenuates between phosphor slots. */
     public void adjustMaskStrength(float delta) {
@@ -177,9 +240,6 @@ public class CrtFilter {
         return curvature;
     }
 
-    public float getTilt() {
-        return tilt;
-    }
 
     public float getMaskStrength() {
         return maskStrength;
@@ -197,13 +257,12 @@ public class CrtFilter {
     /** Returns the tube face to flat and head-on. */
     public void resetGeometry() {
         curvature = 0f;
-        tilt = 0f;
     }
 
     public String status() {
-        return String.format("CRT: %s | %s | mask %.2f | bloom %.2f | focus %.2f | curve %.2f | tilt %.2f",
+        return String.format("CRT: %s | %s | mask %.2f | bloom %.2f | focus %.2f | curve %.2f",
                 preset.label(), mask.name().toLowerCase().replace('_', ' '),
-                maskStrength, bloomAmount, getSharpness(), curvature, tilt);
+                maskStrength, bloomAmount, getSharpness(), curvature);
     }
 
     private void applyPreset(Preset p) {
@@ -411,20 +470,28 @@ public class CrtFilter {
 
             int nearest = Math.max(0, Math.min(h - 1, Math.round(sy)));
 
+            // Distance to each of the four source scanlines is the same all the
+            // way along this row, so its half of the lookup is resolved here.
+            int[] tapBase = new int[4];
+            for (int t = 0; t < 4; t++) {
+                int s = s0 + t;
+                tapBase[t] = (s < 0 || s >= h) ? -1 : beamRowBase(sy - s);
+            }
+
             for (int x = 0; x < ow; x++) {
                 float r = 0, g = 0, b = 0;
                 for (int t = 0; t < 4; t++) {
-                    int s = s0 + t;
-                    if (s < 0 || s >= h)
+                    int base = tapBase[t];
+                    if (base < 0)
                         continue;
-                    int j = (s * ow + x) * 3;
+                    int j = ((s0 + t) * ow + x) * 3;
                     float lr = rows[j], lg = rows[j + 1], lb = rows[j + 2];
 
                     // Beam width tracks drive level: bright lines bloom wide
                     // enough to close the gap, dark ones stay pencil-thin.
                     float lum = 0.299f * lr + 0.587f * lg + 0.114f * lb;
-                    float d = sy - s;
-                    float wt = beamWeight(d, lum);
+                    int li = (int) (clamp(lum, 0f, 1f) * (LUM_STEPS - 1) + 0.5f);
+                    float wt = beamLut[base + li];
 
                     r += wt * lr;
                     g += wt * lg;
@@ -452,15 +519,26 @@ public class CrtFilter {
         return beamNormLut[li];
     }
 
-    private float beamWeight(float dist, float lum) {
+    /**
+     * Offset into {@link #beamLut} for a distance, or -1 when the spot cannot
+     * reach that far.
+     *
+     * <p>Split from the luminance lookup because the distance between an output
+     * row and the source scanlines above and below it is fixed for the whole
+     * row - only the luminance changes along it. Doing this per row instead of
+     * per pixel takes an abs, a compare, a multiply and a cast out of the inner
+     * loop, four times over.
+     */
+    private int beamRowBase(float dist) {
         float ad = Math.abs(dist);
-        if (ad >= DIST_MAX)
-            return 0f;
+        if (ad >= DIST_MAX) {
+            return -1;
+        }
         int di = (int) (ad * (DIST_STEPS / DIST_MAX));
-        if (di >= DIST_STEPS)
+        if (di >= DIST_STEPS) {
             di = DIST_STEPS - 1;
-        int li = (int) (clamp(lum, 0f, 1f) * (LUM_STEPS - 1) + 0.5f);
-        return beamLut[li * DIST_STEPS + di];
+        }
+        return di * LUM_STEPS;
     }
 
     // === Stage 4: halation (light scattering in the glass) ===
@@ -574,7 +652,6 @@ public class CrtFilter {
     private void compositePass() {
         final int ow = outW, oh = outH;
         final float curve = curvature;
-        final float tiltAmt = tilt;
         final boolean doBloom = bloomAmount > 0.001f;
 
         // The mask attenuates, so `brightness` carries a compensation factor for
@@ -583,31 +660,44 @@ public class CrtFilter {
         // nothing to offset it, and the picture runs hot enough to wash out dark
         // text on a bright background.
         final float gain = brightness / maskMeanGain();
-        final boolean identity = (curve == 0f && tiltAmt == 0f);
+        final boolean identity = (curve == 0f);
+
+        ensureMaskRows();
+        final boolean masking = mask != Mask.NONE && maskStrength > 0f;
 
         IntStream.range(0, oh).parallel().forEach(oy -> {
             float v = (oy + 0.5f) / oh * 2f - 1f;
             int dst = oy * ow;
             float[] halo = new float[3];
+            // Row offset into the precomputed mask, or -1 when there is none.
+            int maskRow = masking ? (oy % maskRowPeriod) * ow * 3 : -1;
+
+            // On a flat screen the bloom's vertical position is the same right
+            // along the row, so the vertical half of the bilinear sample is
+            // done once here, into a scratch the width of the (downsampled)
+            // bloom buffer. That leaves a horizontal blend per pixel instead of
+            // a full bilinear one - the largest single cost in this pass.
+            float[] bloomLine = null;
+            if (doBloom && identity) {
+                bloomLine = new float[bloomW * 3];
+                float fy = clamp((v + 1f) * 0.5f, 0f, 1f) * (bloomH - 1);
+                int y0 = (int) fy;
+                int y1 = Math.min(bloomH - 1, y0 + 1);
+                float ty = fy - y0;
+                int r0 = y0 * bloomW * 3, r1 = y1 * bloomW * 3;
+                for (int i = 0; i < bloomW * 3; i++) {
+                    float top = bloomSmall[r0 + i];
+                    bloomLine[i] = top + (bloomSmall[r1 + i] - top) * ty;
+                }
+            }
 
             for (int ox = 0; ox < ow; ox++) {
                 float u = (ox + 0.5f) / ow * 2f - 1f;
 
-                // Off-axis view: a perspective divide across x gives the tube
-                // an apparent rotation, with the far edge compressed.
-                float uu = u, vv = v;
-                if (tiltAmt != 0f) {
-                    float wDiv = 1f + tiltAmt * u;
-                    if (wDiv < 0.05f)
-                        wDiv = 0.05f;
-                    uu = u / wDiv;
-                    vv = v / wDiv;
-                }
-
                 // Barrel curvature of the tube face.
-                float u2 = uu * uu, v2 = vv * vv;
-                float cu = uu * (1f + curve * v2);
-                float cv = vv * (1f + curve * u2);
+                float u2 = u * u, v2 = v * v;
+                float cu = u * (1f + curve * v2);
+                float cv = v * (1f + curve * u2);
 
                 if (cu < -1f || cu > 1f || cv < -1f || cv > 1f) {
                     output[dst + ox] = 0xFF000000; // outside the glass
@@ -639,55 +729,35 @@ public class CrtFilter {
                 }
 
                 if (doBloom) {
-                    float bu = (cu + 1f) * 0.5f, bv = (cv + 1f) * 0.5f;
-                    sampleBloom(bu, bv, halo);
-                    r += halo[0] * bloomAmount;
-                    g += halo[1] * bloomAmount;
-                    b += halo[2] * bloomAmount;
+                    if (bloomLine != null) {
+                        float fx = clamp((cu + 1f) * 0.5f, 0f, 1f) * (bloomW - 1);
+                        int x0 = (int) fx;
+                        int x1 = Math.min(bloomW - 1, x0 + 1);
+                        float tx = fx - x0;
+                        int i0 = x0 * 3, i1 = x1 * 3;
+                        r += (bloomLine[i0] + (bloomLine[i1] - bloomLine[i0]) * tx) * bloomAmount;
+                        g += (bloomLine[i0 + 1] + (bloomLine[i1 + 1] - bloomLine[i0 + 1]) * tx) * bloomAmount;
+                        b += (bloomLine[i0 + 2] + (bloomLine[i1 + 2] - bloomLine[i0 + 2]) * tx) * bloomAmount;
+                    } else {
+                        float bu = (cu + 1f) * 0.5f, bv = (cv + 1f) * 0.5f;
+                        sampleBloom(bu, bv, halo);
+                        r += halo[0] * bloomAmount;
+                        g += halo[1] * bloomAmount;
+                        b += halo[2] * bloomAmount;
+                    }
                 }
 
                 // Aperture grille / shadow mask, in screen space so the fine
                 // structure stays crisp instead of aliasing through the warp.
-                if (mask != Mask.NONE && maskStrength > 0f) {
-                    float mr = 1f, mg = 1f, mb = 1f;
-                    switch (mask) {
-                        case APERTURE_GRILLE: {
-                            int p = ox % 3;
-                            mr = (p == 0) ? 1f : 0f;
-                            mg = (p == 1) ? 1f : 0f;
-                            mb = (p == 2) ? 1f : 0f;
-                            break;
-                        }
-                        case SHADOW_MASK: {
-                            int p = (ox + (oy % 2) * 3) % 6;
-                            mr = (p < 2) ? 1f : 0f;
-                            mg = (p >= 2 && p < 4) ? 1f : 0f;
-                            mb = (p >= 4) ? 1f : 0f;
-                            break;
-                        }
-                        case SLOT_MASK: {
-                            int p = (ox + ((oy / 3) % 2) * 3) % 6;
-                            mr = (p < 2) ? 1f : 0f;
-                            mg = (p >= 2 && p < 4) ? 1f : 0f;
-                            mb = (p >= 4) ? 1f : 0f;
-                            // Horizontal slot gaps between phosphor rows.
-                            if (oy % 6 == 5)
-                                mr = mg = mb = 0f;
-                            break;
-                        }
-                        default:
-                            break;
-                    }
-                    // A real mask is an aperture: it blocks light, never adds
-                    // it. Gains stay in [1-k, 1] so the brightest a subpixel
-                    // can be is unattenuated. Amplifying here (a "mean
-                    // preserving" triad peaking above 1) is what blows the
-                    // highlights out; the lost average is restored by the
-                    // brightness gain below instead.
-                    float k = maskStrength;
-                    r *= 1f - k * (1f - mr);
-                    g *= 1f - k * (1f - mg);
-                    b *= 1f - k * (1f - mb);
+                // A real mask is an aperture: it blocks light, never adds it,
+                // so the factors stay in [1-k, 1] and the lost average is put
+                // back by the brightness gain below. Precomputed per row; see
+                // ensureMaskRows.
+                if (maskRow >= 0) {
+                    int mi = maskRow + ox * 3;
+                    r *= maskRows[mi];
+                    g *= maskRows[mi + 1];
+                    b *= maskRows[mi + 2];
                 }
 
                 if (monochrome > 0f) {
@@ -699,7 +769,7 @@ public class CrtFilter {
 
                 // Vignette from the tube's corner falloff.
                 if (vignette > 0f) {
-                    float rad = uu * uu + vv * vv;
+                    float rad = u2 + v2;
                     float vig = 1f - vignette * rad * 0.5f;
                     if (vig < 0f)
                         vig = 0f;
@@ -821,7 +891,7 @@ public class CrtFilter {
             float inv = 1f / (2f * sigma * sigma);
             for (int di = 0; di < DIST_STEPS; di++) {
                 float d = (di + 0.5f) * (DIST_MAX / DIST_STEPS);
-                beamLut[li * DIST_STEPS + di] = (float) Math.exp(-d * d * inv);
+                beamLut[di * LUM_STEPS + li] = (float) Math.exp(-d * d * inv);
             }
             // A gaussian of width sigma spread over unit scanline pitch carries
             // sigma*sqrt(2pi) of energy; dividing by it preserves mean level.
