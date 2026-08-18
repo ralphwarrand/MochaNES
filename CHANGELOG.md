@@ -2,6 +2,46 @@
 
 Notable changes per release. Dates are release dates.
 
+## [0.3.0] - 2026-08-18
+
+### Added
+- Colour emphasis and greyscale. `$2001` bits 5-7 and bit 0 were read for the
+  rendering enables and nothing else, so a game tinting the screen for damage
+  or lightning drew the same as normal. Emphasis attenuates the channels it
+  does not name, so setting all three dims the picture rather than cancelling.
+- **Overscan**, cropping the edges as a television's bezel did. The NES picks a
+  palette per 16x16 block but scrolls a pixel at a time, so a column revealed by
+  scrolling shows the previous block's colours until the attribute catches up.
+  Games blank the leftmost 8 pixels to hide part of it; the block is 16 wide, so
+  the rest still shows. Choosing a CRT preset turns it on.
+- **CRT detail**, a budget for how many pixels the filter renders before being
+  scaled up. Fullscreen on a 1440p screen cost 28ms a frame; the balanced
+  default holds around 98fps at any screen size.
+- **Save states** on Ctrl+S and Ctrl+L, or to a chosen file, so a moment can be
+  kept and shared. The emulator thread stops while one is written.
+- Sprite hit and overflow ROMs joined the suite - 13 of them. They report at
+  zero page `$F8` rather than through `$6000`, which is why they had never been
+  readable. All 11 sprite 0 hit tests pass, including the timing ones.
+- Background tests that compute the expected picture independently, covering the
+  nametable seam, vertical scrolling, and scroll and CHR bank changes made
+  part-way down a frame and part-way along a scanline.
+- `RomBuilder` can emit a mapper and real CHR-ROM, so bank switching is testable.
+
+### Fixed
+- Sprite pattern bytes are read in each sprite's own slot of the fetch phase
+  rather than all eight at cycle 257, so an MMC3 game switching CHR banks
+  part-way through that window has the later sprites come from the new bank.
+- Rebinding a key could not capture the arrows, Tab, Space or Enter - every one
+  of the default bindings - because a focused button consumes them.
+- The browser CRT shader used a hardcoded 256x240 source size for its scanline
+  pitch and filter taps.
+
+### Changed
+- The CRT filter is about a quarter faster: 10.6ms to 8.1ms at the balanced
+  budget. Bloom alone had been a third of it.
+- Tilt is gone from the CRT. Curvature is the useful control and now has fine
+  steps on F6 and F7.
+
 ## [0.2.1] - 2026-08-13
 
 ### Fixed
