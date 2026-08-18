@@ -223,6 +223,44 @@ check('60Hz display runs at console speed', at60 >= 100 && at60 <= 140, at60 + '
 check('144Hz display does not run fast', at144 >= 100 && at144 <= 140,
       at144 + ' frames in 2s (a display-rate loop would give ~288)');
 
+// Overscan: the cropped picture must be the uncropped one with its edges
+// removed, not merely a smaller buffer. This is a guard against the shadowing
+// trap the platform scripts warn about - an `ox` parameter renamed to a short
+// name and clobbered by a same-named local made every row after the first read
+// from a stray offset, and the previous checks all passed because nestest's
+// screen is black at the edges and hid it.
+N.command('overscan', 'none');
+N.command('pause', '');           // hold the picture still between captures
+N.command('step', '');
+const fullW = N.cw, fullPixels = Int32Array.from(N.pixels);
+
+N.command('overscan', 'sides');
+N.command('step', '');
+const cropW = N.cw;
+check('overscan resizes the buffer', cropW === fullW - 16, cropW + ' vs ' + fullW);
+
+let shifted = 0;
+let compared = 0;
+for (let y = 0; y < N.ch; y++) {
+  for (let x = 0; x < cropW; x++) {
+    compared++;
+    if (N.pixels[y * cropW + x] !== fullPixels[y * fullW + (x + 8)]) shifted++;
+  }
+}
+check('cropped picture matches the uncropped one offset by the crop',
+      shifted === 0, shifted + ' of ' + compared + ' pixels differ');
+
+// And the picture must occupy many rows, not collapse onto the first.
+let rows = 0;
+for (let y = 0; y < N.ch; y++) {
+  for (let x = 0; x < cropW; x++) {
+    if ((N.pixels[y * cropW + x] & 0xFFFFFF) !== 0) { rows++; break; }
+  }
+}
+check('picture spans many rows', rows > 20, rows + ' rows carry content');
+N.command('overscan', 'none');
+N.command('pause', '');
+
 // URL loading: regression guard for the shadowed ROM handler.
 elements.status.textContent = '';
 N.loadUrl('nestest.nes', 'fetched.nes');

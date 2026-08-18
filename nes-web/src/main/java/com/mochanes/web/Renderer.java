@@ -229,15 +229,19 @@ final class Renderer {
      * the typed array straight through.
      */
     @JSBody(params = { "src", "ox", "oy" }, script = ""
-            + "var N = window.NESW;"
-            + "var p = N.pixels;"
-            + "var s = src.data || src;"
-            + "var w = N.cw, h = N.ch;"
-            + "for (var y = 0; y < h; y++) {"
-            + "  var si = (y + oy) * 256 + ox, di = y * w;"
-            + "  for (var x = 0; x < w; x++) {"
-            + "    var c = s[si + x];"
-            + "    p[di + x] = 0xFF000000 | ((c & 0xFF) << 16) | (c & 0xFF00) | ((c >> 16) & 0xFF);"
+            // Every local is q-prefixed. The compiler renames this method's
+            // parameters to short names, and a plain `var c` here became the
+            // same binding as the `ox` parameter: the first row was right and
+            // every row after it read from a pixel colour as its offset.
+            + "var qN = window.NESW;"
+            + "var qP = qN.pixels;"
+            + "var qS = src.data || src;"
+            + "var qW = qN.cw, qH = qN.ch;"
+            + "for (var qY = 0; qY < qH; qY++) {"
+            + "  var qSi = (qY + oy) * 256 + ox, qDi = qY * qW;"
+            + "  for (var qX = 0; qX < qW; qX++) {"
+            + "    var qC = qS[qSi + qX];"
+            + "    qP[qDi + qX] = 0xFF000000 | ((qC & 0xFF) << 16) | (qC & 0xFF00) | ((qC >> 16) & 0xFF);"
             + "  }"
             + "}")
     static native void uploadFrame(int[] src, int ox, int oy);
@@ -252,23 +256,23 @@ final class Renderer {
      * pixels that are cropped away.
      */
     @JSBody(params = { "w", "h" }, script = ""
-            + "var N = window.NESW;"
-            + "if (N.cw === w && N.ch === h) return;"
-            + "N.cw = w; N.ch = h;"
-            + "N.buffer = new ArrayBuffer(w * h * 4);"
-            + "N.pixels = new Int32Array(N.buffer);"
-            + "N.bytes = new Uint8Array(N.buffer);"
-            + "if (N.gl) {"
-            + "  N.gl.bindTexture(N.gl.TEXTURE_2D, N.tex);"
-            + "  N.gl.texImage2D(N.gl.TEXTURE_2D, 0, N.gl.RGBA, w, h, 0, N.gl.RGBA,"
-            + "                  N.gl.UNSIGNED_BYTE, null);"
+            + "var qN = window.NESW;"
+            + "if (qN.cw === w && qN.ch === h) return;"
+            + "qN.cw = w; qN.ch = h;"
+            + "qN.buffer = new ArrayBuffer(w * h * 4);"
+            + "qN.pixels = new Int32Array(qN.buffer);"
+            + "qN.bytes = new Uint8Array(qN.buffer);"
+            + "if (qN.gl) {"
+            + "  qN.gl.bindTexture(qN.gl.TEXTURE_2D, qN.tex);"
+            + "  qN.gl.texImage2D(qN.gl.TEXTURE_2D, 0, qN.gl.RGBA, w, h, 0, qN.gl.RGBA,"
+            + "                   qN.gl.UNSIGNED_BYTE, null);"
             + "}"
-            + "if (N.ctx2d) {"
-            + "  N.canvas.width = w; N.canvas.height = h;"
-            + "  N.ctx2d.imageSmoothingEnabled = false;"
-            + "  N.img = N.ctx2d.createImageData(w, h);"
+            + "if (qN.ctx2d) {"
+            + "  qN.canvas.width = w; qN.canvas.height = h;"
+            + "  qN.ctx2d.imageSmoothingEnabled = false;"
+            + "  qN.img = qN.ctx2d.createImageData(w, h);"
             + "}"
-            + "if (N.applyDisplay) N.applyDisplay();")
+            + "if (qN.applyDisplay) qN.applyDisplay();")
     static native void setSourceSize(int w, int h);
 
     /** Uploads and draws the completed frame. */
