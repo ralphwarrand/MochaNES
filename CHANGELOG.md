@@ -2,6 +2,21 @@
 
 Notable changes per release. Dates are release dates.
 
+## [0.3.1] - 2026-08-18
+
+### Fixed
+- Only the top row of the picture drew in the browser. Adding the crop origin
+  gave the frame upload a third parameter, which the compiler renames to a short
+  name, and its inner loop declared a local of that same name - in JavaScript the
+  same binding. The first row used the right offset; after that the offset held a
+  pixel colour and every later row read from beyond the frame. This is the
+  shadowing trap the platform scripts warn about, and why identifiers in them are
+  q-prefixed.
+- The smoke test now checks the cropped picture equals the uncropped one offset
+  by the crop. It had passed on the broken build: it loads nestest, whose screen
+  is black at the edges, so the clobbered offset happened to equal the correct
+  one when overscan was off.
+
 ## [0.3.0] - 2026-08-18
 
 ### Added
