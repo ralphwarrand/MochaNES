@@ -112,6 +112,20 @@ final class RomBuilder {
      * @param vertical vertical mirroring when true, horizontal otherwise
      */
     byte[] build(boolean vertical) {
+        return build(vertical, 0, null);
+    }
+
+    /**
+     * Builds with a chosen mapper and, optionally, real CHR-ROM.
+     *
+     * <p>CHR-ROM rather than CHR-RAM is what makes bank switching testable:
+     * the banks have to exist in the file, since a switchable bank cannot be
+     * filled through {@code $2007}.
+     *
+     * @param mapper iNES mapper number
+     * @param chrRom CHR data, a multiple of 8KB, or null for 8KB of CHR-RAM
+     */
+    byte[] build(boolean vertical, int mapper, byte[] chrRom) {
         resolve();
 
         byte[] prg = new byte[0x4000];
@@ -128,15 +142,20 @@ final class RomBuilder {
         prg[0x3FFE] = (byte) (nmi & 0xFF);
         prg[0x3FFF] = (byte) ((nmi >> 8) & 0xFF);
 
-        byte[] rom = new byte[16 + prg.length];
+        int chrLen = chrRom == null ? 0 : chrRom.length;
+        byte[] rom = new byte[16 + prg.length + chrLen];
         rom[0] = 'N';
         rom[1] = 'E';
         rom[2] = 'S';
         rom[3] = 0x1A;
         rom[4] = 1;                                  // 1 x 16KB PRG
-        rom[5] = 0;                                  // 0 CHR banks means CHR-RAM
-        rom[6] = (byte) (vertical ? 0x01 : 0x00);    // mapper 0, mirroring
+        rom[5] = (byte) (chrLen / 8192);             // 0 CHR banks means CHR-RAM
+        rom[6] = (byte) (((mapper & 0x0F) << 4) | (vertical ? 0x01 : 0x00));
+        rom[7] = (byte) (mapper & 0xF0);
         System.arraycopy(prg, 0, rom, 16, prg.length);
+        if (chrRom != null) {
+            System.arraycopy(chrRom, 0, rom, 16 + prg.length, chrLen);
+        }
         return rom;
     }
 
