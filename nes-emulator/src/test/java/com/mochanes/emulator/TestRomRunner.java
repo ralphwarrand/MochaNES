@@ -70,6 +70,34 @@ public final class TestRomRunner {
         return null;
     }
 
+    /**
+     * Runs one of the 2005-era test ROMs, which predate the $6000 protocol.
+     *
+     * <p>Those report "on screen and by beeping" and leave a code in zero page
+     * $F8: 1 for a pass, otherwise the numbered failure listed in the ROM's
+     * readme. They run to a fixed point and then loop forever, so a fixed frame
+     * count is enough - there is no completion flag to wait on.
+     *
+     * @return the result code, or -1 when the ROM is absent
+     */
+    public static int runLegacy(File rom, int frames) throws IOException {
+        Display display = new Display(true);
+        NES nes = new NES(display);
+        nes.loadROM(rom.getPath());
+        nes.reset();
+        nes.getApu().setMuted(true);
+
+        CPU cpu = nes.getCpu();
+        for (int f = 0; f < frames; f++) {
+            long target = cpu.getTotalCycles() + CYCLES_PER_FRAME;
+            while (cpu.getTotalCycles() < target) {
+                nes.stepInstruction();
+            }
+        }
+        // peek, not read: read is a bus cycle and would inject clocks.
+        return nes.getMemory().peek(0x00F8);
+    }
+
     public static Result run(File rom, int maxFrames) throws IOException {
         Display display = new Display(true);
         NES nes = new NES(display);

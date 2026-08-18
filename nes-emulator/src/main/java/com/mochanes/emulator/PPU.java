@@ -2,6 +2,9 @@ package com.mochanes.emulator;
 
 
 public class PPU {
+
+
+
     // Registers (CPU Visible)
     private int ctrl; // $2000
     private int mask; // $2001
@@ -50,7 +53,8 @@ public class PPU {
     }
 
     // Palette
-    private static final int[] PALETTE_LOOKUP = {
+    /** Master palette. Package-private so tests can predict a pixel's colour. */
+    static final int[] PALETTE_LOOKUP = {
             0x545454, 0x001E74, 0x081090, 0x300088, 0x440064, 0x5C0030, 0x540400, 0x3C1800,
             0x202A00, 0x083A00, 0x004000, 0x003C00, 0x00323C, 0x000000, 0x000000, 0x000000,
             0x989698, 0x084CC4, 0x3032EC, 0x5C1E14, 0x8814B0, 0xA01464, 0x982220, 0x783C00,
@@ -190,7 +194,14 @@ public class PPU {
                 t = (t & 0xF3FF) | ((val & 0x03) << 10);
                 break;
             case 0x2001: // Mask
+                // Greyscale (bit 0) and the emphasis bits (5-7) are baked into
+                // the palette cache, so a change to any of them has to rebuild
+                // it. The rendering-enable bits do not affect colour.
+                boolean tintChanged = ((mask ^ val) & 0xE1) != 0;
                 mask = val;
+                if (tintChanged) {
+                    refreshPaletteCache();
+                }
                 break;
             case 0x2003: // OAM Addr
                 oamAddr = val;
@@ -366,6 +377,21 @@ public class PPU {
             }
         }
 
+        // Each sprite's pattern is read in its own slot of the fetch phase, as
+        // hardware does, rather than all eight at cycle 257. An MMC3 game
+        // switching CHR banks part-way through this window - which SMB3 and
+        // Kirby do thousands of times a second - has the later sprites come
+        // from the new bank and the earlier ones from the old. Reading them all
+        // up front gave every sprite on the line the pre-switch bank.
+        if ((mask & 0x18) != 0 && (scanline < 240 || scanline == 261)
+                && cycle >= 261 && cycle <= 317 && ((cycle - 261) & 7) == 0) {
+            int slot = (cycle - 261) >> 3;
+            if (slot < spriteCount) {
+                spritePatLo[slot] = readVram(spritePatAddr[slot]);
+                spritePatHi[slot] = readVram(spritePatAddr[slot] + 8);
+            }
+        }
+
         // VBlank
         if (scanline == 241 && cycle == 1) {
             if (!suppressVblSet) {
@@ -443,6 +469,8 @@ public class PPU {
     private final int[] spritePatLo = new int[8];
     private final int[] spritePatHi = new int[8];
     private final boolean[] spriteIsZero = new boolean[8];
+    /** Pattern address per sprite, fetched later in the scanline. */
+    private final int[] spritePatAddr = new int[8];
     private int spriteCount = 0;
 
     /** Fills secondary OAM for the given scanline. */
@@ -484,8 +512,10 @@ public class PPU {
 
             spriteX[spriteCount] = oam[idx + 3] & 0xFF;
             spriteAttr[spriteCount] = attr;
-            spritePatLo[spriteCount] = readVram(patternAddr);
-            spritePatHi[spriteCount] = readVram(patternAddr + 8);
+            // The pattern bytes are not read here; see fetchSpritePattern.
+            spritePatAddr[spriteCount] = patternAddr;
+            spritePatLo[spriteCount] = 0;
+            spritePatHi[spriteCount] = 0;
             spriteIsZero[spriteCount] = (i == 0);
             spriteCount++;
         }
@@ -726,7 +756,7 @@ public class PPU {
             if (address == 0x1C)
                 address = 0x0C;
             paletteRam[address] = (byte) val;
-            paletteRgb[address] = PALETTE_LOOKUP[val & 0x3F];
+            paletteRgb[address] = tinted(val);
             // The four mirrored entries share storage, so the cache entry for
             // the alias has to move with them.
             if (address == 0x00 || address == 0x04 || address == 0x08 || address == 0x0C) {
@@ -747,6 +777,11 @@ public class PPU {
     private final int[] paletteRgb = new int[32];
 
     /** Rebuilds the whole cache, after a state load or a copy. */
+    /** The colour a blank screen shows: palette entry $3F00, tinted. */
+    int backdropColour() {
+        return paletteRgb[0];
+    }
+
     private void refreshPaletteCache() {
         for (int i = 0; i < paletteRgb.length; i++) {
             int a = i;
@@ -759,8 +794,56 @@ public class PPU {
             } else if (a == 0x1C) {
                 a = 0x0C;
             }
-            paletteRgb[i] = PALETTE_LOOKUP[paletteRam[a] & 0x3F];
+            paletteRgb[i] = tinted(paletteRam[a] & 0x3F);
         }
+    }
+
+    /**
+     * How far a channel is pulled down when it is not being emphasised.
+     *
+     * <p>The emphasis bits do not brighten what they name: they attenuate the
+     * other two. Setting all three therefore dims the whole picture rather than
+     * doing nothing.
+     */
+    private static final float EMPHASIS_ATTENUATION = 0.746f;
+
+    /**
+     * A palette entry as it leaves the PPU, with greyscale and colour emphasis
+     * applied.
+     *
+     * <p>Both live in $2001 and change rarely - a few times a frame at most -
+     * so they are folded into the cache rather than costing anything per pixel.
+     */
+    private int tinted(int paletteIndex) {
+        int index = paletteIndex & 0x3F;
+        // Greyscale forces the entry onto the grey column of the palette.
+        if ((mask & 0x01) != 0) {
+            index &= 0x30;
+        }
+        int rgb = PALETTE_LOOKUP[index];
+        int emphasis = mask & 0xE0;
+        if (emphasis == 0) {
+            return rgb;
+        }
+
+        float r = 1f, g = 1f, b = 1f;
+        if ((mask & 0x20) != 0) {          // emphasise red: dim green and blue
+            g *= EMPHASIS_ATTENUATION;
+            b *= EMPHASIS_ATTENUATION;
+        }
+        if ((mask & 0x40) != 0) {          // emphasise green
+            r *= EMPHASIS_ATTENUATION;
+            b *= EMPHASIS_ATTENUATION;
+        }
+        if ((mask & 0x80) != 0) {          // emphasise blue
+            r *= EMPHASIS_ATTENUATION;
+            g *= EMPHASIS_ATTENUATION;
+        }
+
+        int rr = Math.min(255, Math.round(((rgb >> 16) & 0xFF) * r));
+        int gg = Math.min(255, Math.round(((rgb >> 8) & 0xFF) * g));
+        int bb = Math.min(255, Math.round((rgb & 0xFF) * b));
+        return (rr << 16) | (gg << 8) | bb;
     }
 
     private int getMirroredAddress(int addr) {
