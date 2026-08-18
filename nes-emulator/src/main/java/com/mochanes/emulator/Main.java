@@ -88,6 +88,12 @@ public class Main {
         // appear beside the game every launch is noise for anyone who just wants
         // to play. File > Debugger opens it, and it is built on first use.
         display.setDebuggerHandler(() -> showDebugger(nes, runner));
+
+        String romName = new java.io.File(romPath).getName();
+        display.setSaveStateHandler(file -> writeState(display, nes, runner,
+                file != null ? file : defaultStateFile(romName)));
+        display.setLoadStateHandler(file -> readState(display, nes, runner,
+                file != null ? file : defaultStateFile(romName)));
     }
 
     /**
@@ -133,6 +139,58 @@ public class Main {
         } catch (IOException e) {
             System.err.println("Error loading ROM for replay: " + e.getMessage());
             e.printStackTrace();
+        }
+    }
+
+    /** Quick-slot path for a ROM, beside the settings file. */
+    private static java.io.File defaultStateFile(String romName) {
+        String home = System.getProperty("user.home", ".");
+        return new java.io.File(home + "/.config/mochanes/states/" + romName + ".mst");
+    }
+
+    /**
+     * Writes a snapshot of the machine.
+     *
+     * <p>The emulator thread is stopped for the duration. It runs the CPU and
+     * PPU continuously, so serialising underneath it would capture a machine
+     * caught between two states - a PPU part-way through a frame that the CPU
+     * has already moved past - which would not reload into anything coherent.
+     */
+    private static void writeState(com.mochanes.emulator.gui.Display display, NES nes,
+            EmulatorRunner runner, java.io.File target) {
+        boolean wasPaused = runner.isPaused();
+        runner.setPaused(true);
+        try {
+            java.nio.file.Files.createDirectories(target.getParentFile().toPath());
+            try (java.io.DataOutputStream out = new java.io.DataOutputStream(
+                    new java.io.BufferedOutputStream(new java.io.FileOutputStream(target)))) {
+                nes.saveState(out);
+            }
+            display.setOverlayText(null);
+            System.out.println("State saved: " + target);
+        } catch (Exception e) {
+            System.err.println("Could not save state: " + e.getMessage());
+        } finally {
+            runner.setPaused(wasPaused);
+        }
+    }
+
+    private static void readState(com.mochanes.emulator.gui.Display display, NES nes,
+            EmulatorRunner runner, java.io.File target) {
+        if (!target.isFile()) {
+            System.err.println("No state at " + target);
+            return;
+        }
+        boolean wasPaused = runner.isPaused();
+        runner.setPaused(true);
+        try (java.io.DataInputStream in = new java.io.DataInputStream(
+                new java.io.BufferedInputStream(new java.io.FileInputStream(target)))) {
+            nes.loadState(in);
+            System.out.println("State loaded: " + target);
+        } catch (Exception e) {
+            System.err.println("Could not load state: " + e.getMessage());
+        } finally {
+            runner.setPaused(wasPaused);
         }
     }
 

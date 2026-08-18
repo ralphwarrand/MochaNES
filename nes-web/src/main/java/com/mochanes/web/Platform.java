@@ -288,7 +288,12 @@ final class Platform {
             + "    var qC = document.getElementById('screen');"
             + "    if (!qC) return;"
             + "    var qA = qN.aspect, qS = qN.scale;"
-            + "    var qRatio = qA === 'pixel' ? (256 / 240) : (4 / 3);"
+            // Pixel-perfect follows the picture actually shown, so cropping the
+            // overscan still gives square-ish pixels rather than a narrower
+            // image stretched back out to 256 wide. 4:3 is unchanged: a TV
+            // filled the screen with whatever it was showing.
+            + "    var qCw = qN.cw || 256, qCh = qN.ch || 240;"
+            + "    var qRatio = qA === 'pixel' ? (qCw / qCh) : (4 / 3);"
             + "    if (document.fullscreenElement) {"
             // Fill the screen: fit the larger of the two dimensions while
             // keeping the ratio, unless stretch was asked for.
@@ -309,10 +314,10 @@ final class Platform {
             + "    qC.style.maxWidth = '';"
             + "    qC.style.maxHeight = '';"
             + "    if (qS > 0) {"
-            + "      var qW = 256 * qS;"
+            + "      var qW = (qN.cw || 256) * qS;"
             + "      qC.style.aspectRatio = 'auto';"
             + "      qC.style.width = qW + 'px';"
-            + "      qC.style.height = (qA === 'pixel' ? 240 * qS : Math.round(qW * 3 / 4)) + 'px';"
+            + "      qC.style.height = (qA === 'pixel' ? (qN.ch || 240) * qS : Math.round(qW * 3 / 4)) + 'px';"
             + "    } else {"
             + "      qC.style.width = 'min(92vw, 768px)';"
             + "      qC.style.height = 'auto';"

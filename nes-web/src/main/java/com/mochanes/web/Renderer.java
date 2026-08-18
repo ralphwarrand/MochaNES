@@ -47,7 +47,13 @@ final class Renderer {
             + " uniform vec2 uOutput; uniform float uCrt; uniform float uMask; uniform float uMaskType;"
             + " uniform float uBloom; uniform float uFocus; uniform float uScan; uniform float uCurve;"
             + " uniform float uSat; uniform float uBright;"
-            + " const vec2 SRC = vec2(256.0, 240.0);"
+            /* Was a constant vec2(256,240). The texture holds the visible
+               picture, which overscan cropping makes smaller, so a constant put
+               the scanline pitch and the filter taps at the wrong spacing for
+               the texture actually bound. A uniform rather than a #define: the
+               shader is one line and a preprocessor directive needs a newline
+               to end, so it would swallow everything after it. */
+            + " uniform vec2 SRC;"
             + " const vec3 LUMA = vec3(0.299, 0.587, 0.114);"
 
             /* Compositing in linear light is what keeps the bloom and the
@@ -198,7 +204,7 @@ final class Renderer {
             // second for a picture whose size never changes.
             + "gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 256, 240, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);"
             + "N.gl = gl; N.prog = pr; N.tex = tx; N.u = {};"
-            + "var names = ['uOutput','uCrt','uMask','uMaskType','uBloom','uFocus','uScan','uCurve','uSat','uBright'];"
+            + "var names = ['uOutput','uCrt','uMask','uMaskType','uBloom','uFocus','uScan','uCurve','uSat','uBright','SRC'];"
             + "for (var i = 0; i < names.length; i++) N.u[names[i]] = gl.getUniformLocation(pr, names[i]);"
             + "return true;")
     static native boolean init(String canvasId);
@@ -222,14 +228,48 @@ final class Renderer {
      * are the {@code data} typed array; the fallback covers a build that passes
      * the typed array straight through.
      */
-    @JSBody(params = { "src" }, script = ""
-            + "var p = window.NESW.pixels;"
+    @JSBody(params = { "src", "ox", "oy" }, script = ""
+            + "var N = window.NESW;"
+            + "var p = N.pixels;"
             + "var s = src.data || src;"
-            + "for (var i = 0; i < 61440; i++) {"
-            + "  var c = s[i];"
-            + "  p[i] = 0xFF000000 | ((c & 0xFF) << 16) | (c & 0xFF00) | ((c >> 16) & 0xFF);"
+            + "var w = N.cw, h = N.ch;"
+            + "for (var y = 0; y < h; y++) {"
+            + "  var si = (y + oy) * 256 + ox, di = y * w;"
+            + "  for (var x = 0; x < w; x++) {"
+            + "    var c = s[si + x];"
+            + "    p[di + x] = 0xFF000000 | ((c & 0xFF) << 16) | (c & 0xFF00) | ((c >> 16) & 0xFF);"
+            + "  }"
             + "}")
-    static native void uploadFrame(int[] src);
+    static native void uploadFrame(int[] src, int ox, int oy);
+
+    /**
+     * Sets how much of the console's picture is shown.
+     *
+     * <p>The texture is resized to the visible area rather than the shader
+     * being taught to sample a sub-rectangle. Everything downstream works in
+     * texture coordinates, so the curvature, vignette and mask then apply to
+     * the picture the viewer actually has - and no fragment work is spent on
+     * pixels that are cropped away.
+     */
+    @JSBody(params = { "w", "h" }, script = ""
+            + "var N = window.NESW;"
+            + "if (N.cw === w && N.ch === h) return;"
+            + "N.cw = w; N.ch = h;"
+            + "N.buffer = new ArrayBuffer(w * h * 4);"
+            + "N.pixels = new Int32Array(N.buffer);"
+            + "N.bytes = new Uint8Array(N.buffer);"
+            + "if (N.gl) {"
+            + "  N.gl.bindTexture(N.gl.TEXTURE_2D, N.tex);"
+            + "  N.gl.texImage2D(N.gl.TEXTURE_2D, 0, N.gl.RGBA, w, h, 0, N.gl.RGBA,"
+            + "                  N.gl.UNSIGNED_BYTE, null);"
+            + "}"
+            + "if (N.ctx2d) {"
+            + "  N.canvas.width = w; N.canvas.height = h;"
+            + "  N.ctx2d.imageSmoothingEnabled = false;"
+            + "  N.img = N.ctx2d.createImageData(w, h);"
+            + "}"
+            + "if (N.applyDisplay) N.applyDisplay();")
+    static native void setSourceSize(int w, int h);
 
     /** Uploads and draws the completed frame. */
     @JSBody(params = {}, script = ""
@@ -255,8 +295,9 @@ final class Renderer {
             + "if (cv.width !== dw || cv.height !== dh) { cv.width = dw; cv.height = dh; }"
             + "gl.viewport(0, 0, cv.width, cv.height);"
             + "gl.uniform2f(N.u.uOutput, cv.width, cv.height);"
+            + "gl.uniform2f(N.u.SRC, N.cw, N.ch);"
             + "gl.bindTexture(gl.TEXTURE_2D, N.tex);"
-            + "gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 256, 240, gl.RGBA, gl.UNSIGNED_BYTE, N.bytes);"
+            + "gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, N.cw, N.ch, gl.RGBA, gl.UNSIGNED_BYTE, N.bytes);"
             + "gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);")
     static native void present();
 

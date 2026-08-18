@@ -157,6 +157,17 @@ public final class WebMain {
     private static final int[] frame = new int[WIDTH * HEIGHT];
 
     /**
+     * Pixels hidden at each edge, as a television's bezel did.
+     *
+     * <p>The NES picks a palette per 16x16 block but scrolls a pixel at a time,
+     * so a column revealed by scrolling can show the previous block's colours
+     * until the attribute catches up. Games blank the leftmost 8 pixels to hide
+     * part of that; the block is 16 wide, so the rest can still show.
+     */
+    private static int overscanX;
+    private static int overscanY;
+
+    /**
      * Kept for the frame-complete signal, and as the path used if the PPU ever
      * runs without a fast buffer attached.
      */
@@ -455,12 +466,21 @@ public final class WebMain {
             case "bound" -> finishBinding(value);
             case "bindPad" -> startPadBinding(value);
             case "resetInput" -> resetBindings();
+            case "overscan" -> { applyOverscan(value); save("overscan", value); }
             case "gotoAddr" -> { debugAddress = parseHex(value); memFollowsPc = false; updateDebug(); }
             case "memPrev" -> { debugAddress = (debugAddress - MEM_ROWS * 16) & 0xFFFF; memFollowsPc = false; updateDebug(); }
             case "memNext" -> { debugAddress = (debugAddress + MEM_ROWS * 16) & 0xFFFF; memFollowsPc = false; updateDebug(); }
             case "memPc" -> { memFollowsPc = !memFollowsPc; updateDebug(); }
             default -> { }
         }
+    }
+
+    /** "none", "sides" or "tv"; anything else is treated as off. */
+    private static void applyOverscan(String mode) {
+        overscanX = ("sides".equals(mode) || "tv".equals(mode)) ? 8 : 0;
+        overscanY = "tv".equals(mode) ? 8 : 0;
+        Renderer.setSourceSize(WIDTH - 2 * overscanX, HEIGHT - 2 * overscanY);
+        applyDisplay();
     }
 
     private static void applyDisplay() {
@@ -553,6 +573,12 @@ public final class WebMain {
         Platform.setControl("focus", Float.toString(focus));
         Platform.setControl("scan", Float.toString(scan));
         Platform.setControl("maskType", Float.toString(maskType));
+        // A preset is a whole television, and a television never showed the
+        // outermost pixels. Still a separate control, so it can be changed
+        // back afterwards.
+        applyOverscan("tv");
+        Platform.setControl("overscan", "tv");
+        save("overscan", "tv");
         applyCrt();
     }
 
@@ -661,7 +687,7 @@ public final class WebMain {
             // Presenting only when something changed saves the whole shader pass
             // on displays that refresh faster than the console.
             if (ran > 0) {
-                Renderer.uploadFrame(frame);
+                Renderer.uploadFrame(frame, overscanX, overscanY);
                 Renderer.present();
                 countFrame();
                 if (Platform.isDebugOpen()) {
@@ -709,7 +735,7 @@ public final class WebMain {
      */
     private static void stepFrameAndUpload() {
         stepOneFrame();
-        Renderer.uploadFrame(frame);
+        Renderer.uploadFrame(frame, overscanX, overscanY);
     }
 
     private static void stepOneFrame() {
@@ -810,6 +836,7 @@ public final class WebMain {
         curve = numOr(loadOr("curve", ""), curve);
 
         aspect = loadOr("aspect", "43");
+        applyOverscan(loadOr("overscan", "none"));
         scale = (int) numOr(loadOr("scale", ""), 0f);
         saturation = numOr(loadOr("sat", ""), saturation);
         brightness = numOr(loadOr("bright", ""), brightness);

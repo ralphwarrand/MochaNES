@@ -43,6 +43,8 @@ public class Display extends JPanel implements FrameSink {
             CrtFilter.Preset.class);
     private final java.util.Map<CrtFilter.Mask, JRadioButtonMenuItem> maskItems = new java.util.EnumMap<>(
             CrtFilter.Mask.class);
+    private final java.util.Map<Settings.Overscan, JRadioButtonMenuItem> overscanItems =
+            new java.util.EnumMap<>(Settings.Overscan.class);
 
     /** Called when the user picks a ROM from the File menu. */
     private java.util.function.Consumer<java.io.File> romLoadHandler;
@@ -57,6 +59,21 @@ public class Display extends JPanel implements FrameSink {
     /** Called when the user asks for the debugger, which is hidden by default. */
     public void setDebuggerHandler(Runnable handler) {
         this.debuggerHandler = handler;
+    }
+
+    /**
+     * Where a state is saved or loaded. The file is null for the quick slot,
+     * which the emulator names after the running ROM.
+     */
+    private java.util.function.Consumer<java.io.File> saveStateHandler;
+    private java.util.function.Consumer<java.io.File> loadStateHandler;
+
+    public void setSaveStateHandler(java.util.function.Consumer<java.io.File> handler) {
+        this.saveStateHandler = handler;
+    }
+
+    public void setLoadStateHandler(java.util.function.Consumer<java.io.File> handler) {
+        this.loadStateHandler = handler;
     }
 
     public void setResetHandler(Runnable handler) {
@@ -93,6 +110,14 @@ public class Display extends JPanel implements FrameSink {
                     }
                     if (e.getKeyCode() == KeyEvent.VK_ESCAPE && fullscreen) {
                         toggleFullscreen();
+                        return;
+                    }
+                    if (e.isControlDown() && e.getKeyCode() == KeyEvent.VK_S) {
+                        saveState(null);
+                        return;
+                    }
+                    if (e.isControlDown() && e.getKeyCode() == KeyEvent.VK_L) {
+                        loadState(null);
                         return;
                     }
                     if (handleDisplayKey(e.getKeyCode(), e.isShiftDown()))
@@ -143,6 +168,7 @@ public class Display extends JPanel implements FrameSink {
 
     private final CrtFilter crt = new CrtFilter();
     private BufferedImage crtImage;
+    private int[] cropped;
     private int[] crtPixels;
     private String toast;
     private long toastUntil;
@@ -174,6 +200,23 @@ public class Display extends JPanel implements FrameSink {
             refocus();
         });
         file.add(reset);
+
+        file.addSeparator();
+        JMenuItem saveState = new JMenuItem("Save State  (Ctrl+S)");
+        saveState.addActionListener(e -> saveState(null));
+        file.add(saveState);
+
+        JMenuItem loadState = new JMenuItem("Load State  (Ctrl+L)");
+        loadState.addActionListener(e -> loadState(null));
+        file.add(loadState);
+
+        JMenuItem saveAs = new JMenuItem("Save State As...");
+        saveAs.addActionListener(e -> chooseStateFile(true));
+        file.add(saveAs);
+
+        JMenuItem loadFrom = new JMenuItem("Load State From...");
+        loadFrom.addActionListener(e -> chooseStateFile(false));
+        file.add(loadFrom);
 
         file.addSeparator();
         JMenuItem debugger = new JMenuItem("Debugger");
@@ -225,6 +268,42 @@ public class Display extends JPanel implements FrameSink {
         video.add(fs);
         video.addSeparator();
 
+        JMenu detailMenu = new JMenu("CRT Detail");
+        ButtonGroup detailGroup = new ButtonGroup();
+        for (Settings.CrtDetail d : Settings.CrtDetail.values()) {
+            JRadioButtonMenuItem it = new JRadioButtonMenuItem(d.label(), settings.crtDetail == d);
+            it.addActionListener(e -> {
+                settings.crtDetail = d;
+                settings.save();
+                showToast("CRT detail: " + d.label());
+                repaint();
+                refocus();
+            });
+            detailGroup.add(it);
+            detailMenu.add(it);
+        }
+        video.add(detailMenu);
+
+        JMenu overscanMenu = new JMenu("Overscan");
+        ButtonGroup overscanGroup = new ButtonGroup();
+        for (Settings.Overscan o : Settings.Overscan.values()) {
+            JRadioButtonMenuItem it = new JRadioButtonMenuItem(o.label(), settings.overscan == o);
+            it.addActionListener(e -> {
+                settings.overscan = o;
+                settings.save();
+                if (frame != null) {
+                    frame.pack();
+                }
+                showToast("Overscan: " + o.label());
+                repaint();
+                refocus();
+            });
+            overscanGroup.add(it);
+            overscanMenu.add(it);
+            overscanItems.put(o, it);
+        }
+        video.add(overscanMenu);
+
         crtToggleItem = new JCheckBoxMenuItem("CRT Simulation  (F1)", crt.enabled);
         crtToggleItem.addActionListener(e -> {
             crt.enabled = crtToggleItem.isSelected();
@@ -240,6 +319,7 @@ public class Display extends JPanel implements FrameSink {
             item.addActionListener(e -> {
                 crt.setPreset(p);
                 crt.enabled = true;
+                applyTelevisionOverscan();
                 syncMenu();
                 showToast(crt.status());
                 refocus();
@@ -270,8 +350,8 @@ public class Display extends JPanel implements FrameSink {
         video.addSeparator();
         video.add(adjustItem("Curvature  +  (F4)", () -> crt.adjustCurvature(0.03f)));
         video.add(adjustItem("Curvature  -  (F5)", () -> crt.adjustCurvature(-0.03f)));
-        video.add(adjustItem("Tilt  Left  (F6)", () -> crt.adjustTilt(-0.05f)));
-        video.add(adjustItem("Tilt  Right  (F7)", () -> crt.adjustTilt(0.05f)));
+        video.add(adjustItem("Curvature  fine +  (F6)", () -> crt.adjustCurvature(0.01f)));
+        video.add(adjustItem("Curvature  fine -  (F7)", () -> crt.adjustCurvature(-0.01f)));
         video.add(adjustItem("Reset Geometry (flat)", crt::resetGeometry));
 
         video.addSeparator();
@@ -357,6 +437,9 @@ public class Display extends JPanel implements FrameSink {
         JRadioButtonMenuItem m = maskItems.get(crt.mask);
         if (m != null)
             m.setSelected(true);
+        JRadioButtonMenuItem o = overscanItems.get(settings.overscan);
+        if (o != null)
+            o.setSelected(true);
     }
 
     // === Window / scaling ===
@@ -621,11 +704,12 @@ public class Display extends JPanel implements FrameSink {
                         + "Window\n"
                         + "  Alt+Enter ..... Fullscreen (Esc to exit)\n\n"
                         + "Video\n"
+                        + "  Ctrl+S / Ctrl+L  Save / load state\n"
                         + "  F1 ............ Toggle CRT simulation\n"
                         + "  F2 ............ Cycle preset\n"
                         + "  F3 ............ Cycle shadow mask\n"
                         + "  F4 / F5 ....... Curvature up / down\n"
-                        + "  F6 / F7 ....... Tilt left / right\n"
+                        + "  F6 / F7 ....... Curvature up / down, in finer steps\n"
                         + "  F8 / F9 ....... Mask strength down / up\n"
                         + "  F10 / F11 ..... Bloom down / up\n"
                         + "  F12 ........... Focus sharper (Shift+F12 softer)",
@@ -644,6 +728,7 @@ public class Display extends JPanel implements FrameSink {
             case KeyEvent.VK_F2:
                 crt.cyclePreset();
                 crt.enabled = true;
+                applyTelevisionOverscan();
                 syncMenu();
                 showToast(crt.status());
                 return true;
@@ -666,13 +751,13 @@ public class Display extends JPanel implements FrameSink {
                 showToast(crt.status());
                 return true;
             case KeyEvent.VK_F6:
-                crt.adjustTilt(-0.05f);
+                crt.adjustCurvature(0.01f);
                 crt.enabled = true;
                 syncMenu();
                 showToast(crt.status());
                 return true;
             case KeyEvent.VK_F7:
-                crt.adjustTilt(0.05f);
+                crt.adjustCurvature(-0.01f);
                 crt.enabled = true;
                 syncMenu();
                 showToast(crt.status());
@@ -713,6 +798,36 @@ public class Display extends JPanel implements FrameSink {
         }
     }
 
+    private void saveState(java.io.File target) {
+        if (saveStateHandler != null) {
+            saveStateHandler.accept(target);
+        }
+        refocus();
+    }
+
+    private void loadState(java.io.File target) {
+        if (loadStateHandler != null) {
+            loadStateHandler.accept(target);
+        }
+        refocus();
+    }
+
+    /** Picks a file for the "As..." variants, so a state can be kept or shared. */
+    private void chooseStateFile(boolean saving) {
+        JFileChooser chooser = new JFileChooser();
+        chooser.setDialogTitle(saving ? "Save State As" : "Load State From");
+        int result = saving ? chooser.showSaveDialog(this) : chooser.showOpenDialog(this);
+        if (result == JFileChooser.APPROVE_OPTION) {
+            java.io.File chosen = chooser.getSelectedFile();
+            if (saving) {
+                saveState(chosen);
+            } else {
+                loadState(chosen);
+            }
+        }
+        refocus();
+    }
+
     private void showToast(String text) {
         toast = text;
         toastUntil = System.currentTimeMillis() + 2000;
@@ -726,12 +841,41 @@ public class Display extends JPanel implements FrameSink {
         }
     }
 
+    /**
+     * Crops the edges as part of choosing a CRT look.
+     *
+     * <p>A preset is a whole television, and a television never showed the
+     * outermost pixels - which is exactly why games leave artifacts there. It
+     * stays a separate setting, so this can be overridden afterwards; picking a
+     * preset just starts from what a set would have done.
+     */
+    private void applyTelevisionOverscan() {
+        if (settings.overscan == Settings.Overscan.TV) {
+            return;
+        }
+        settings.overscan = Settings.Overscan.TV;
+        settings.save();
+        if (frame != null) {
+            frame.pack();
+        }
+    }
+
+    /** Width of the picture after overscan cropping. */
+    private int visibleWidth() {
+        return WIDTH - 2 * settings.overscan.horizontal();
+    }
+
+    /** Height of the picture after overscan cropping. */
+    private int visibleHeight() {
+        return HEIGHT - 2 * settings.overscan.vertical();
+    }
+
     @Override
     public Dimension getPreferredSize() {
         if (settings.aspect == Settings.Aspect.ASPECT_4_3) {
             return new Dimension(HEIGHT * settings.scale * 4 / 3, HEIGHT * settings.scale);
         }
-        return new Dimension(WIDTH * settings.scale, HEIGHT * settings.scale);
+        return new Dimension(visibleWidth() * settings.scale, visibleHeight() * settings.scale);
     }
 
     private String overlayText;
@@ -767,9 +911,13 @@ public class Display extends JPanel implements FrameSink {
 
             case PIXEL_PERFECT:
             default: {
-                // Largest whole-pixel multiple that fits; never below 1x.
-                int mult = Math.max(1, Math.min(w / WIDTH, h / HEIGHT));
-                int dw = WIDTH * mult, dh = HEIGHT * mult;
+                // Largest whole-pixel multiple that fits; never below 1x. The
+                // multiple applies to the picture actually shown, so cropping
+                // the edges still gives whole pixels rather than a 240-wide
+                // image stretched across 256.
+                int vw = visibleWidth(), vh = visibleHeight();
+                int mult = Math.max(1, Math.min(w / vw, h / vh));
+                int dw = vw * mult, dh = vh * mult;
                 return new Rectangle((w - dw) / 2, (h - dh) / 2, dw, dh);
             }
         }
@@ -791,7 +939,10 @@ public class Display extends JPanel implements FrameSink {
             if (crt.enabled) {
                 drawCrt(g, vp);
             } else {
-                g.drawImage(image, vp.x, vp.y, vp.width, vp.height, null);
+                int ox = settings.overscan.horizontal();
+                int oy = settings.overscan.vertical();
+                g.drawImage(image, vp.x, vp.y, vp.x + vp.width, vp.y + vp.height,
+                        ox, oy, WIDTH - ox, HEIGHT - oy, null);
             }
         }
 
@@ -815,19 +966,72 @@ public class Display extends JPanel implements FrameSink {
         }
     }
 
+    /**
+     * Draws the picture through the CRT simulation.
+     *
+     * <p>The filter costs time in proportion to the pixels it is asked for, and
+     * it is asked for the whole viewport. Windowed that is around half a
+     * megapixel and takes a few milliseconds; fullscreen on a 1440p screen it
+     * is 3.7 megapixels and takes longer than a frame is allowed, so the
+     * picture slows down the moment the window is maximised.
+     *
+     * <p>Past a budget the effect is therefore rendered smaller and scaled up.
+     * The cost is mask crispness - the mask is a screen-space pattern, so
+     * enlarging it softens it - which is why the budget is a setting and why
+     * "Full" is still there for anyone who would rather have the detail.
+     */
     private void drawCrt(Graphics g, Rectangle vp) {
         int w = vp.width, h = vp.height;
         if (w <= 0 || h <= 0)
             return;
 
-        int[] out = crt.process(pixels, WIDTH, HEIGHT, w, h);
+        // The filter only ever sees the visible picture, so its curvature and
+        // vignette follow the edges the viewer actually has, and no time is
+        // spent on pixels that are cropped away.
+        int ox = settings.overscan.horizontal();
+        int oy = settings.overscan.vertical();
+        int srcW = WIDTH - 2 * ox;
+        int srcH = HEIGHT - 2 * oy;
+        int[] source = pixels;
+        if (ox != 0 || oy != 0) {
+            if (cropped == null || cropped.length != srcW * srcH) {
+                cropped = new int[srcW * srcH];
+            }
+            for (int row = 0; row < srcH; row++) {
+                System.arraycopy(pixels, (row + oy) * WIDTH + ox, cropped, row * srcW, srcW);
+            }
+            source = cropped;
+        }
 
-        if (crtImage == null || crtImage.getWidth() != w || crtImage.getHeight() != h) {
-            crtImage = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB);
+        int rw = w, rh = h;
+        long budget = settings.crtDetail.maxPixels();
+        if (budget > 0 && (long) w * h > budget) {
+            double scale = Math.sqrt(budget / ((double) w * h));
+            rw = Math.max(srcW, (int) Math.round(w * scale));
+            rh = Math.max(srcH, (int) Math.round(h * scale));
+        }
+
+        int[] out = crt.process(source, srcW, srcH, rw, rh);
+
+        if (crtImage == null || crtImage.getWidth() != rw || crtImage.getHeight() != rh) {
+            crtImage = new BufferedImage(rw, rh, BufferedImage.TYPE_INT_RGB);
             crtPixels = ((DataBufferInt) crtImage.getRaster().getDataBuffer()).getData();
         }
         System.arraycopy(out, 0, crtPixels, 0, Math.min(out.length, crtPixels.length));
-        g.drawImage(crtImage, vp.x, vp.y, null);
+
+        if (rw == w && rh == h) {
+            g.drawImage(crtImage, vp.x, vp.y, null);
+            return;
+        }
+
+        Graphics2D g2 = (Graphics2D) g;
+        Object previous = g2.getRenderingHint(RenderingHints.KEY_INTERPOLATION);
+        g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION,
+                RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+        g2.drawImage(crtImage, vp.x, vp.y, w, h, null);
+        if (previous != null) {
+            g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, previous);
+        }
     }
 
     // Double buffering. The emulation thread draws into renderBuffer while the

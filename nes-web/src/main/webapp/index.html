@@ -209,6 +209,14 @@
         <option value="pixel">Pixel-perfect</option>
         <option value="stretch">Stretch</option>
       </select>
+
+      <label for="overscanSel">Overscan</label>
+      <select id="overscanSel" data-cmd="overscan">
+        <option value="none">Off - show all 256x240</option>
+        <option value="sides">Hide 8px left and right</option>
+        <option value="tv">Hide 8px all round (as on a TV)</option>
+      </select>
+      <span class="val"></span>
       <select data-cmd="scale">
         <option value="0">Fit width</option>
         <option value="1">1&times;</option>

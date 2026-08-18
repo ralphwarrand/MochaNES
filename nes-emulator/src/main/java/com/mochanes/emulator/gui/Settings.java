@@ -27,6 +27,76 @@ public class Settings {
             KeyEvent.VK_UP, KeyEvent.VK_DOWN, KeyEvent.VK_LEFT, KeyEvent.VK_RIGHT
     };
 
+    /**
+     * How many pixels the CRT simulation may render before it is scaled up.
+     *
+     * <p>Its cost is proportional to the pixels asked for, so a maximised
+     * window on a large screen can cost more than a frame's worth of time. The
+     * budget caps that; the picture is rendered smaller and enlarged, which
+     * softens the shadow mask, so the choice is left to the user.
+     */
+    public enum CrtDetail {
+        FULL("Full - native resolution", 0),
+        BALANCED("Balanced", 1_200_000),
+        FAST("Fast - softest mask", 600_000);
+
+        final String label;
+        final int maxPixels;
+
+        CrtDetail(String label, int maxPixels) {
+            this.label = label;
+            this.maxPixels = maxPixels;
+        }
+
+        public String label() {
+            return label;
+        }
+
+        /** Pixel budget, or 0 for no limit. */
+        public int maxPixels() {
+            return maxPixels;
+        }
+    }
+
+    /**
+     * How much of the picture's edge is hidden.
+     *
+     * <p>A television overscanned: the outermost pixels fell behind the bezel
+     * and were never seen. Games relied on it - the NES picks a palette per
+     * 16x16 block but scrolls a pixel at a time, so a column revealed by
+     * scrolling can show the previous block's colours until the attribute
+     * catches up. Games blank the leftmost 8 pixels to hide part of that, but
+     * the block is 16 wide, so the rest can still show. Cropping the edges puts
+     * back what a TV did.
+     */
+    public enum Overscan {
+        NONE("Off - show all 256x240", 0, 0),
+        SIDES("Hide 8px left and right", 8, 0),
+        TV("Hide 8px all round (as on a TV)", 8, 8);
+
+        final String label;
+        final int horizontal;
+        final int vertical;
+
+        Overscan(String label, int horizontal, int vertical) {
+            this.label = label;
+            this.horizontal = horizontal;
+            this.vertical = vertical;
+        }
+
+        public String label() {
+            return label;
+        }
+
+        public int horizontal() {
+            return horizontal;
+        }
+
+        public int vertical() {
+            return vertical;
+        }
+    }
+
     /** How the picture is fitted to the window. */
     public enum Aspect {
         PIXEL_PERFECT("Pixel Perfect (integer)"),
@@ -78,6 +148,8 @@ public class Settings {
 
     public int scale = 3; // window size multiplier
     public Aspect aspect = Aspect.PIXEL_PERFECT;
+    public CrtDetail crtDetail = CrtDetail.BALANCED;
+    public Overscan overscan = Overscan.NONE;
     public boolean gamepadEnabled = true;
 
     private final File file;
@@ -202,6 +274,16 @@ public class Settings {
         } catch (IllegalArgumentException ignored) {
             // unknown value: keep default
         }
+        try {
+            crtDetail = CrtDetail.valueOf(p.getProperty("video.crtDetail", crtDetail.name()));
+        } catch (IllegalArgumentException ignored) {
+            // unknown value: keep default
+        }
+        try {
+            overscan = Overscan.valueOf(p.getProperty("video.overscan", overscan.name()));
+        } catch (IllegalArgumentException ignored) {
+            // unknown value: keep default
+        }
     }
 
     public void save() {
@@ -212,6 +294,8 @@ public class Settings {
         }
         p.setProperty("video.scale", String.valueOf(scale));
         p.setProperty("video.aspect", aspect.name());
+        p.setProperty("video.crtDetail", crtDetail.name());
+        p.setProperty("video.overscan", overscan.name());
         p.setProperty("input.gamepad", String.valueOf(gamepadEnabled));
         try {
             Files.createDirectories(file.getParentFile().toPath());
